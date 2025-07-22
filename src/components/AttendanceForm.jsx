@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import Swal from '../pages/swal';
-import { Clock, MapPin, Camera, CheckCircle, AlertCircle, User, Edit, Bell } from 'lucide-react';
+import Swal from 'sweetalert2';
+import { Clock, MapPin, Camera, CheckCircle, AlertCircle, User, Edit, Bell, XCircle, Info } from 'lucide-react';
 import { supabase, getOfficeLocation, getCameraVerificationSettings } from '../utils/supabaseClient';
 import { processImageUrl, compareFaceFingerprints } from '../utils/customFaceRecognition';
 import CustomFaceCapture from './CustomFaceCapture';
@@ -20,13 +20,36 @@ const AttendanceForm = ({ user, onAttendanceSubmitted, todayAttendance = [] }) =
   const [userProfile, setUserProfile] = useState(null);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [cameraVerificationEnabled, setCameraVerificationEnabled] = useState(true);
+  const [officeLocation, setOfficeLocation] = useState(null);
+  const [distanceFromOffice, setDistanceFromOffice] = useState(null);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    // Check if mobile device
+    const checkIfMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    checkIfMobile();
+    window.addEventListener('resize', checkIfMobile);
+    return () => window.removeEventListener('resize', checkIfMobile);
+  }, []);
 
   useEffect(() => {
     fetchUserProfile();
     fetchLastAttendance();
     determineAttendanceType();
     fetchCameraSettings();
+    fetchOfficeLocation();
   }, [user, todayAttendance]);
+
+  const fetchOfficeLocation = async () => {
+    try {
+      const location = await getOfficeLocation();
+      setOfficeLocation(location);
+    } catch (error) {
+      console.error('Error fetching office location:', error);
+    }
+  };
 
   const fetchCameraSettings = async () => {
     try {
@@ -34,7 +57,6 @@ const AttendanceForm = ({ user, onAttendanceSubmitted, todayAttendance = [] }) =
       setCameraVerificationEnabled(settings.enabled);
     } catch (error) {
       console.error('Error fetching camera settings:', error);
-      // Default to enabled if there's an error
       setCameraVerificationEnabled(true);
     }
   };
@@ -61,17 +83,15 @@ const AttendanceForm = ({ user, onAttendanceSubmitted, todayAttendance = [] }) =
       if (error) throw error;
       setUserProfile(data);
 
-      // Load stored face fingerprint if avatar exists
       if (data.avatar_url && cameraVerificationEnabled) {
         try {
           const result = await processImageUrl(data.avatar_url);
           setStoredFingerprint(result.fingerprint);
-          console.log('✅ Stored face fingerprint loaded');
         } catch (err) {
           console.error('Error loading stored face fingerprint:', err);
           setError('Gagal memuat data wajah tersimpan. Silakan hubungi administrator.');
         }
-      } else {
+      } else if (cameraVerificationEnabled) {
         setError('Foto profil belum tersedia. Silakan lengkapi profil Anda terlebih dahulu.');
       }
     } catch (err) {
@@ -100,12 +120,50 @@ const AttendanceForm = ({ user, onAttendanceSubmitted, todayAttendance = [] }) =
     }
   };
 
-  const handleLocationValidated = (isValid, location) => {
-    setValidLocation(isValid);
+  const showLocationErrorAlert = (distance) => {
+    let message = '';
+    
+    if (distance > 1000) {
+      message = `Anda berada ${(distance/1000).toFixed(1)} km dari lokasi kantor.`;
+    } else {
+      message = ``;
+    }
+    
+    message += '<br/><br/>Silakan datang ke lokasi kantor untuk melakukan absensi.';
+
+    Swal.fire({
+      icon: 'error',
+      title: 'Hmm, Sistem mendeteksi kamu di luar lokasi kantor',
+      html: message,
+      confirmButtonText: 'Mengerti',
+      confirmButtonColor: '#3085d6',
+    });
+  };
+
+  const handleLocationValidated = (isValid, location, distance) => {
+    setDistanceFromOffice(distance);
+    
+    if (!isValid) {
+      showLocationErrorAlert(distance);
+      setValidLocation(false);
+      return;
+    }
+
+    setValidLocation(true);
     setUserLocation(location);
-    if (isValid && cameraVerificationEnabled) {
+    
+    // Show success alert for location
+    Swal.fire({
+      icon: 'success',
+      title: 'Lokasi Valid',
+      text: 'Anda berada di lokasi kantor yang ditentukan',
+      timer: 2000,
+      showConfirmButton: false
+    });
+
+    if (cameraVerificationEnabled) {
       setStep(2); // Move to face verification step
-    } else if (isValid && !cameraVerificationEnabled) {
+    } else {
       setStep(3); // Skip face verification if disabled
     }
   };
@@ -113,47 +171,44 @@ const AttendanceForm = ({ user, onAttendanceSubmitted, todayAttendance = [] }) =
   const handleFaceCapture = (photoBlob, fingerprint) => {
     setCapturedFace(photoBlob);
     setFaceFingerprint(fingerprint);
+    
+    // Show face capture success alert
+    Swal.fire({
+      icon: 'success',
+      title: 'Wajah Terverifikasi',
+      text: 'Wajah Anda berhasil dikenali',
+      timer: 2000,
+      showConfirmButton: false
+    });
+    
     setStep(3); // Move to submit step
   };
 
   const verifyFace = async () => {
-    // Skip face verification if disabled
-    if (!cameraVerificationEnabled) {
-      return true;
-    }
+    if (!cameraVerificationEnabled) return true;
     
     if (!faceFingerprint || !storedFingerprint) {
       throw new Error('Data wajah tidak tersedia untuk verifikasi');
     }
 
     try {
-      // Threshold dinaikkan agar lebih toleran, default 0.7 (0.4/0.5/0.6 terlalu ketat untuk real-world)
       const FACE_MATCH_THRESHOLD = 0.7;
       const isMatch = compareFaceFingerprints(faceFingerprint, storedFingerprint, FACE_MATCH_THRESHOLD);
-      // Log hasil similarity dan fingerprint untuk debug
-      console.log('Face match check:', {
-        threshold: FACE_MATCH_THRESHOLD,
-        faceFingerprint,
-        storedFingerprint
-      });
       
       if (!isMatch) {
-        console.error(`Face verification failed. Distance exceeded threshold of ${FACE_MATCH_THRESHOLD}`);
         throw new Error('Wajah tidak cocok dengan data yang tersimpan. Pastikan Anda adalah orang yang benar dengan pencahayaan yang baik.');
       }
 
-      console.log(`✅ Face verified with threshold: ${FACE_MATCH_THRESHOLD}`);
       return true;
     } catch (err) {
       console.error('Face verification error:', err);
-      // Re-throw the specific error message from the comparison
       throw err;
     }
   };
 
   const calculateWorkDetails = () => {
     const now = new Date();
-    const currentTime = now.toTimeString().slice(0, 5); // HH:MM format
+    const currentTime = now.toTimeString().slice(0, 5);
     const workStartTime = '08:00';
     const workEndTime = '17:00';
     
@@ -163,7 +218,6 @@ const AttendanceForm = ({ user, onAttendanceSubmitted, todayAttendance = [] }) =
     let overtimeHours = 0;
 
     if (attendanceType === 'masuk') {
-      // Check if late (after 08:15 - 15 minutes tolerance)
       isLate = currentTime > '08:15';
       if (isLate) {
         const startTime = new Date(`1970-01-01T${workStartTime}:00`);
@@ -171,17 +225,15 @@ const AttendanceForm = ({ user, onAttendanceSubmitted, todayAttendance = [] }) =
         lateMinutes = Math.floor((currentDateTime - startTime) / 60000);
       }
     } else if (attendanceType === 'keluar') {
-      // Calculate work hours for check out
       if (lastAttendance && lastAttendance.type === 'masuk') {
         const checkInTime = new Date(lastAttendance.timestamp);
         const checkOutTime = now;
         const totalMinutes = Math.floor((checkOutTime - checkInTime) / 60000);
         workHours = Math.max(0, totalMinutes / 60);
         
-        // Calculate overtime (after 9 hours including 1 hour break)
         if (workHours > 9) {
           overtimeHours = workHours - 9;
-          workHours = 9; // Cap regular hours at 9
+          workHours = 9;
         }
       }
     }
@@ -200,13 +252,17 @@ const AttendanceForm = ({ user, onAttendanceSubmitted, todayAttendance = [] }) =
       return;
     }
 
-    // Check if already submitted this type today
     const hasAlreadySubmitted = todayAttendance.some(r => 
       r.type === attendanceType && r.status === 'berhasil'
     );
 
     if (hasAlreadySubmitted) {
-      setError(`Anda sudah melakukan absensi ${attendanceType} hari ini.`);
+      Swal.fire({
+        icon: 'warning',
+        title: 'Absensi Sudah Dilakukan',
+        text: `Anda sudah melakukan absensi ${attendanceType} hari ini.`,
+        confirmButtonText: 'OK'
+      });
       return;
     }
 
@@ -214,7 +270,6 @@ const AttendanceForm = ({ user, onAttendanceSubmitted, todayAttendance = [] }) =
     setError(null);
 
     try {
-      // Verify face first (if enabled)
       if (cameraVerificationEnabled) {
         await verifyFace();
       }
@@ -222,22 +277,18 @@ const AttendanceForm = ({ user, onAttendanceSubmitted, todayAttendance = [] }) =
       const now = new Date();
       const { isLate, lateMinutes, workHours, overtimeHours } = calculateWorkDetails();
 
-      // Calculate daily salary earned
       const dailySalary = userProfile?.salary ? userProfile.salary / 22 : 0;
       let dailySalaryEarned = 0;
       
       if (attendanceType === 'masuk') {
-        // For check-in, calculate based on lateness
         if (isLate && lateMinutes > 15) {
-          // Deduct salary for excessive lateness
-          const deductionRate = Math.min(lateMinutes / 60 * 0.1, 0.5); // Max 50% deduction
+          const deductionRate = Math.min(lateMinutes / 60 * 0.1, 0.5);
           dailySalaryEarned = dailySalary * (1 - deductionRate);
         } else {
           dailySalaryEarned = dailySalary;
         }
       }
 
-      // Submit attendance record with enhanced data
       const attendanceData = {
         user_id: user.id,
         type: attendanceType,
@@ -253,7 +304,6 @@ const AttendanceForm = ({ user, onAttendanceSubmitted, todayAttendance = [] }) =
         notes: `Absensi ${attendanceType} berhasil dengan verifikasi ${cameraVerificationEnabled ? 'wajah dan ' : ''}lokasi. ${isLate ? `Terlambat ${lateMinutes} menit.` : 'Tepat waktu.'}`
       };
 
-      // Set check-in or check-out time
       if (attendanceType === 'masuk') {
         attendanceData.check_in_time = now.toISOString();
       } else {
@@ -272,48 +322,41 @@ const AttendanceForm = ({ user, onAttendanceSubmitted, todayAttendance = [] }) =
         await supabase.from('activity_logs').insert([{
           user_id: user.id,
           action_type: `attendance_${attendanceType}`,
-          action_details: {
-            type: attendanceType,
-            status: 'berhasil',
-            is_late: isLate,
-            late_minutes: lateMinutes,
-            work_hours: workHours,
-            overtime_hours: overtimeHours,
-            daily_salary_earned: dailySalaryEarned,
-            location: {
-              latitude: userLocation.latitude,
-              longitude: userLocation.longitude
-            },
-            device_info: {
-              user_agent: navigator.userAgent,
-              timestamp: now.toISOString()
-            }
-          },
+          action_details: attendanceData,
           user_agent: navigator.userAgent
         }]);
       } catch (logError) {
         console.error('Failed to log activity:', logError);
       }
 
-      // Show SweetAlert2 success popup
+      // Show success alert with more details
       await Swal.fire({
         icon: 'success',
         title: `Absensi ${attendanceType === 'masuk' ? 'Masuk' : 'Keluar'} Berhasil`,
-        html: `<div style='text-align:left'>${isLate ? `<b>Status:</b> Terlambat ${lateMinutes} menit<br/>` : '<b>Status:</b> Tepat Waktu<br/>'}${workHours > 0 ? `<b>Jam Kerja:</b> ${workHours.toFixed(1)} jam<br/>` : ''}${overtimeHours > 0 ? `<b>Lembur:</b> ${overtimeHours.toFixed(1)} jam<br/>` : ''}</div>`,
-        confirmButtonText: 'OK',
-        timer: 3000,
-        timerProgressBar: true
+        html: `
+          <div class="text-left">
+            <p class="mb-2"><strong>Status:</strong> ${isLate ? `Terlambat ${lateMinutes} menit` : 'Tepat Waktu'}</p>
+            ${workHours > 0 ? `<p class="mb-2"><strong>Jam Kerja:</strong> ${workHours.toFixed(1)} jam</p>` : ''}
+            ${overtimeHours > 0 ? `<p class="mb-2"><strong>Lembur:</strong> ${overtimeHours.toFixed(1)} jam</p>` : ''}
+            ${dailySalaryEarned > 0 ? `<p class="mb-2"><strong>Gaji Harian:</strong> ${formatCurrency(dailySalaryEarned)}</p>` : ''}
+            <p class="text-sm text-gray-500 mt-3">${now.toLocaleString('id-ID')}</p>
+          </div>
+        `,
+        confirmButtonText: 'Selesai',
+        confirmButtonColor: '#10b981',
+        timer: 5000,
+        timerProgressBar: true,
+        willClose: () => {
+          if (onAttendanceSubmitted) {
+            onAttendanceSubmitted(data[0]);
+          }
+          resetForm();
+        }
       });
-      // Success callback
-      if (onAttendanceSubmitted) {
-        onAttendanceSubmitted(data[0]);
-      }
-      resetForm();
 
     } catch (err) {
       console.error('Attendance submission error:', err);
       
-      // Determine error status
       let errorStatus = 'gagal';
       if (err.message.includes('wajah') || err.message.includes('Verifikasi wajah')) {
         errorStatus = cameraVerificationEnabled ? 'wajah_tidak_valid' : 'gagal';
@@ -321,7 +364,6 @@ const AttendanceForm = ({ user, onAttendanceSubmitted, todayAttendance = [] }) =
         errorStatus = 'lokasi_tidak_valid';
       }
       
-      // Log failed attempt
       const failedData = {
         user_id: user.id,
         type: attendanceType,
@@ -338,7 +380,8 @@ const AttendanceForm = ({ user, onAttendanceSubmitted, todayAttendance = [] }) =
         icon: 'error',
         title: `Absensi ${attendanceType === 'masuk' ? 'Masuk' : 'Keluar'} Gagal`,
         text: err.message || 'Terjadi kesalahan saat absensi',
-        confirmButtonText: 'OK'
+        confirmButtonText: 'OK',
+        confirmButtonColor: '#3085d6'
       });
       setError(err.message);
     } finally {
@@ -359,8 +402,13 @@ const AttendanceForm = ({ user, onAttendanceSubmitted, todayAttendance = [] }) =
 
   const getCurrentTime = () => {
     return new Date().toLocaleString('id-ID', {
-      dateStyle: 'full',
-      timeStyle: 'medium'
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
     });
   };
 
@@ -372,224 +420,188 @@ const AttendanceForm = ({ user, onAttendanceSubmitted, todayAttendance = [] }) =
     }).format(amount);
   };
 
-  // Check if can perform this attendance type
+  // Check attendance status
   const hasCheckedIn = todayAttendance.some(r => r.type === 'masuk' && r.status === 'berhasil');
   const hasCheckedOut = todayAttendance.some(r => r.type === 'keluar' && r.status === 'berhasil');
   
   const canCheckIn = !hasCheckedIn;
   const canCheckOut = hasCheckedIn && !hasCheckedOut;
 
-  // Success Message Component
-  if (showSuccessMessage) {
-    const { isLate, lateMinutes, workHours, overtimeHours } = calculateWorkDetails();
-    
-    return (
-      <div className="max-w-2xl mx-auto bg-white rounded-xl shadow-lg overflow-hidden">
-        <div className="bg-gradient-to-r from-green-600 to-green-700 px-6 py-8 text-white">
-          <div className="flex items-center space-x-4 mb-4">
-            <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
-              <CheckCircle className="h-6 w-6" />
-            </div>
-            <div>
-              <h2 className="text-2xl font-bold">Absensi Berhasil!</h2>
-              <p className="opacity-90">{attendanceType === 'masuk' ? 'Check In' : 'Check Out'} berhasil dicatat</p>
-            </div>
+  // Don't show form if no stored fingerprint and camera verification is enabled
+  if (cameraVerificationEnabled && !storedFingerprint) {
+    if (error && error.includes('Foto profil')) {
+      return (
+        <div className="max-w-md mx-auto bg-white rounded-xl shadow-md overflow-hidden md:max-w-2xl">
+          <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-8 text-white">
+            <h2 className="text-2xl font-bold mb-2">Absensi Karyawan</h2>
+            <p className="opacity-90">Setup diperlukan untuk melanjutkan</p>
           </div>
-        </div>
-
-        <div className="p-6">
-          <div className="bg-green-50 rounded-lg p-4 mb-6">
-            <h3 className="font-medium text-green-900 mb-3">Detail Absensi</h3>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-green-700">Waktu:</span>
-                <span className="font-medium text-green-900">
-                  {new Date().toLocaleString('id-ID')}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-green-700">Status:</span>
-                <span className={`font-medium ${isLate ? 'text-orange-600' : 'text-green-900'}`}>
-                  {isLate ? `Terlambat ${lateMinutes} menit` : 'Tepat Waktu'}
-                </span>
-              </div>
-              {attendanceType === 'keluar' && workHours > 0 && (
-                <>
-                  <div className="flex justify-between">
-                    <span className="text-green-700">Jam Kerja:</span>
-                    <span className="font-medium text-green-900">
-                      {workHours.toFixed(1)} jam
-                    </span>
-                  </div>
-                  {overtimeHours > 0 && (
-                    <div className="flex justify-between">
-                      <span className="text-green-700">Lembur:</span>
-                      <span className="font-medium text-green-900">
-                        {overtimeHours.toFixed(1)} jam
-                      </span>
-                    </div>
-                  )}
-                </>
-              )}
+          <div className="p-6 text-center">
+            <div className="bg-red-100 p-4 rounded-full inline-flex mb-4">
+              <XCircle className="h-12 w-12 text-red-600" />
             </div>
-          </div>
-
-          {/* Salary Information */}
-          {userProfile?.salary && attendanceType === 'masuk' && (
-            <div className="bg-blue-50 rounded-lg p-4 mb-6">
-              <h3 className="font-medium text-blue-900 mb-3">Informasi Gaji Hari Ini</h3>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-blue-700">Gaji Harian:</span>
-                  <span className="font-medium text-blue-900">
-                    {formatCurrency(userProfile.salary / 22)}
-                  </span>
-                </div>
-                {isLate && (
-                  <div className="flex justify-between">
-                    <span className="text-blue-700">Potongan Keterlambatan:</span>
-                    <span className="font-medium text-orange-600">
-                      -{formatCurrency((userProfile.salary / 22) * (lateMinutes / 15 * 0.1))}
-                    </span>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          <div className="text-center">
-            <p className="text-gray-600 mb-4">
-              Terima kasih! Data absensi Anda telah tersimpan dengan aman.
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">Verifikasi Wajah Diperlukan</h3>
+            <p className="text-gray-600 mb-6">
+              Untuk keamanan sistem absensi, Anda perlu menambahkan foto wajah ke profil terlebih dahulu.
             </p>
-            <button
-              onClick={resetForm}
-              className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-            >
-              Tutup
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Don't show form if no stored fingerprint and show profile setup option
-  if (cameraVerificationEnabled && !storedFingerprint && error && error.includes('Foto profil')) {
-    return (
-      <div className="max-w-2xl mx-auto bg-white rounded-xl shadow-lg overflow-hidden">
-        <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-8 text-white">
-          <h2 className="text-2xl font-bold mb-2">Absensi Karyawan</h2>
-          <p className="opacity-90">Setup diperlukan untuk melanjutkan</p>
-        </div>
-        <div className="p-6 text-center">
-          <Camera className="h-16 w-16 text-blue-600 mx-auto mb-4" />
-          <h3 className="text-xl font-semibold text-gray-900 mb-2">Foto Profil Diperlukan</h3>
-          <p className="text-gray-600 mb-6">
-            Untuk dapat melakukan absensi dengan verifikasi wajah, Anda perlu menambahkan foto wajah ke profil terlebih dahulu.
-          </p>
-          
-          <div className="space-y-3">
-            <button
-              onClick={() => window.location.href = '/profile-setup'}
-              className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-blue-700 transition-colors"
-            >
-              <div className="flex items-center justify-center space-x-2">
+            
+            <div className="space-y-3">
+              <button
+                onClick={() => window.location.href = '/profile'}
+                className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center justify-center space-x-2"
+              >
                 <Edit className="h-4 w-4" />
-                <span>Setup Foto Wajah Sekarang</span>
-              </div>
-            </button>
-          </div>
+                <span>Lengkapi Profil Sekarang</span>
+              </button>
+              
+              <button
+                onClick={() => setCameraVerificationEnabled(false)}
+                className="w-full bg-gray-200 text-gray-800 py-3 px-4 rounded-lg font-medium hover:bg-gray-300 transition-colors text-sm"
+              >
+                Gunakan Mode Tanpa Verifikasi Wajah
+              </button>
+            </div>
 
-          <div className="mt-4 p-3 bg-yellow-50 rounded-lg">
-            <p className="text-sm text-yellow-700">
-              <strong>Catatan:</strong> Proses setup hanya perlu dilakukan sekali dan memakan waktu kurang dari 2 menit.
-            </p>
+            <div className="mt-6 p-3 bg-blue-50 rounded-lg text-left">
+              <div className="flex items-start space-x-2">
+                <Info className="h-5 w-5 text-blue-600 flex-shrink-0" />
+                <div>
+                  <p className="text-sm text-blue-700 font-medium">Informasi Penting</p>
+                  <p className="text-xs text-blue-600 mt-1">
+                    Mode tanpa verifikasi wajah hanya dapat digunakan dengan persetujuan HRD dan memiliki batasan tertentu.
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
-    );
-  }
+      );
+    }
 
-  // Don't show form if no stored fingerprint
-  if (cameraVerificationEnabled && !storedFingerprint && !error) {
     return (
-      <div className="max-w-2xl mx-auto bg-white rounded-xl shadow-lg overflow-hidden">
+      <div className="max-w-md mx-auto bg-white rounded-xl shadow-md overflow-hidden md:max-w-2xl">
         <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-8 text-white">
           <h2 className="text-2xl font-bold mb-2">Absensi Karyawan</h2>
           <p className="opacity-90">Memuat data verifikasi...</p>
         </div>
-        <div className="p-6 text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Memuat data wajah untuk verifikasi...</p>
+        <div className="p-8 text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Menyiapkan sistem verifikasi...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-2xl mx-auto bg-white rounded-xl shadow-lg overflow-hidden">
+    <div className="max-w-md mx-auto bg-white rounded-xl shadow-md overflow-hidden md:max-w-2xl">
       {/* Header */}
       <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-8 text-white">
         <div className="flex items-center space-x-4 mb-4">
           <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
             <User className="h-6 w-6" />
           </div>
-          <div>
-            <h2 className="text-2xl font-bold">Absensi Karyawan</h2>
-            <p className="opacity-90">{userProfile?.name || 'Pengguna'}</p>
+          <div className="flex-1 min-w-0">
+            <h2 className="text-xl md:text-2xl font-bold truncate">Absensi Karyawan</h2>
+            <p className="text-sm md:text-base opacity-90 truncate">{userProfile?.name || 'Pengguna'}</p>
           </div>
         </div>
-        <p className="opacity-90">{getCurrentTime()}</p>
+        <p className="text-xs md:text-sm opacity-90">{getCurrentTime()}</p>
         
         {lastAttendance && (
           <div className="mt-4 p-3 bg-white/10 rounded-lg">
-            <p className="text-sm">
-              Absensi terakhir: <span className="font-medium">
+            <p className="text-xs md:text-sm truncate">
+              Terakhir: <span className="font-medium">
                 {lastAttendance.type === 'masuk' ? 'Masuk' : 'Keluar'}
-              </span> pada {new Date(lastAttendance.timestamp).toLocaleString('id-ID')}
+              </span> {new Date(lastAttendance.timestamp).toLocaleString('id-ID', {
+                weekday: 'short',
+                day: 'numeric',
+                month: 'short',
+                hour: '2-digit',
+                minute: '2-digit'
+              })}
             </p>
           </div>
         )}
 
         {/* Attendance Status */}
         <div className="mt-4 p-3 bg-white/10 rounded-lg">
-          <div className="text-sm space-y-1">
-            <div className="flex justify-between">
-              <span>Status Hari Ini:</span>
-              <span className={hasCheckedIn ? 'text-green-300' : 'text-yellow-300'}>
-                {hasCheckedIn ? '✓ Sudah Masuk' : '○ Belum Masuk'}
-              </span>
+          <div className="grid grid-cols-2 gap-2 text-xs md:text-sm">
+            <div className="flex items-center space-x-1">
+              <div className={`w-2 h-2 rounded-full ${hasCheckedIn ? 'bg-green-400' : 'bg-yellow-400'}`}></div>
+              <span>Masuk:</span>
+              <span className="font-medium">{hasCheckedIn ? '✓' : '○'}</span>
             </div>
-            <div className="flex justify-between">
-              <span></span>
-              <span className={hasCheckedOut ? 'text-green-300' : 'text-yellow-300'}>
-                {hasCheckedOut ? '✓ Sudah Keluar' : '○ Belum Keluar'}
-              </span>
+            <div className="flex items-center space-x-1">
+              <div className={`w-2 h-2 rounded-full ${hasCheckedOut ? 'bg-green-400' : 'bg-yellow-400'}`}></div>
+              <span>Keluar:</span>
+              <span className="font-medium">{hasCheckedOut ? '✓' : '○'}</span>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="p-6">
-        {/* Progress Steps */}
-        <div className="flex items-center justify-between mb-8">
-          {[1, 2, 3].map((stepNum) => (
-            <div key={stepNum} className="flex items-center">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center font-medium ${
-                step >= stepNum
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-200 text-gray-600'
+      <div className="p-4 md:p-6">
+        {/* Progress Steps - Mobile */}
+        {isMobile && (
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex flex-col items-center">
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center font-medium text-sm ${
+                step >= 1 ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'
               }`}>
-                {stepNum < step ? <CheckCircle className="h-5 w-5" /> : stepNum}
+                {step > 1 ? <CheckCircle className="h-4 w-4" /> : 1}
               </div>
-              {stepNum < 3 && (
-                <div className={`flex-1 h-1 mx-4 ${
-                  step > stepNum ? 'bg-blue-600' : 'bg-gray-200'
-                }`} />
-              )}
+              <span className="text-xs mt-1">Lokasi</span>
             </div>
-          ))}
-        </div>
+            <div className="flex-1 h-1 mx-2 bg-gray-200 relative">
+              <div className={`absolute top-0 left-0 h-full ${
+                step > 1 ? 'bg-blue-600' : 'bg-gray-200'
+              }`} style={{ width: step > 1 ? '100%' : '0%' }}></div>
+            </div>
+            <div className="flex flex-col items-center">
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center font-medium text-sm ${
+                step >= 2 ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'
+              }`}>
+                {step > 2 ? <CheckCircle className="h-4 w-4" /> : 2}
+              </div>
+              <span className="text-xs mt-1">Wajah</span>
+            </div>
+            <div className="flex-1 h-1 mx-2 bg-gray-200 relative">
+              <div className={`absolute top-0 left-0 h-full ${
+                step > 2 ? 'bg-blue-600' : 'bg-gray-200'
+              }`} style={{ width: step > 2 ? '100%' : '0%' }}></div>
+            </div>
+            <div className="flex flex-col items-center">
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center font-medium text-sm ${
+                step >= 3 ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'
+              }`}>
+                3
+              </div>
+              <span className="text-xs mt-1">Kirim</span>
+            </div>
+          </div>
+        )}
+
+        {/* Progress Steps - Desktop */}
+        {!isMobile && (
+          <div className="flex items-center justify-between mb-8">
+            {[1, 2, 3].map((stepNum) => (
+              <div key={stepNum} className="flex items-center">
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center font-medium ${
+                  step >= stepNum
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-200 text-gray-600'
+                }`}>
+                  {stepNum < step ? <CheckCircle className="h-5 w-5" /> : stepNum}
+                </div>
+                {stepNum < 3 && (
+                  <div className={`flex-1 h-1 mx-4 ${
+                    step > stepNum ? 'bg-blue-600' : 'bg-gray-200'
+                  }`} />
+                )}
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Attendance Type Selection */}
         <div className="mb-6">
@@ -600,7 +612,7 @@ const AttendanceForm = ({ user, onAttendanceSubmitted, todayAttendance = [] }) =
             <button
               onClick={() => setAttendanceType('masuk')}
               disabled={!canCheckIn}
-              className={`p-4 rounded-lg border-2 transition-all ${
+              className={`p-3 md:p-4 rounded-lg border-2 transition-all flex flex-col items-center ${
                 attendanceType === 'masuk'
                   ? 'border-blue-600 bg-blue-50 text-blue-700'
                   : canCheckIn 
@@ -608,14 +620,14 @@ const AttendanceForm = ({ user, onAttendanceSubmitted, todayAttendance = [] }) =
                     : 'border-gray-200 bg-gray-50 text-gray-400 cursor-not-allowed'
               }`}
             >
-              <Clock className="h-6 w-6 mx-auto mb-2" />
-              <p className="font-medium">Masuk</p>
-              {!canCheckIn && <p className="text-xs mt-1">Sudah absen masuk</p>}
+              <Clock className="h-5 w-5 md:h-6 md:w-6 mb-2" />
+              <p className="font-medium text-sm md:text-base">Masuk</p>
+              {!canCheckIn && <p className="text-xs mt-1">Sudah dilakukan</p>}
             </button>
             <button
               onClick={() => setAttendanceType('keluar')}
               disabled={!canCheckOut}
-              className={`p-4 rounded-lg border-2 transition-all ${
+              className={`p-3 md:p-4 rounded-lg border-2 transition-all flex flex-col items-center ${
                 attendanceType === 'keluar'
                   ? 'border-blue-600 bg-blue-50 text-blue-700'
                   : canCheckOut 
@@ -623,9 +635,13 @@ const AttendanceForm = ({ user, onAttendanceSubmitted, todayAttendance = [] }) =
                     : 'border-gray-200 bg-gray-50 text-gray-400 cursor-not-allowed'
               }`}
             >
-              <Clock className="h-6 w-6 mx-auto mb-2" />
-              <p className="font-medium">Keluar</p>
-              {!canCheckOut && <p className="text-xs mt-1">{!hasCheckedIn ? 'Belum absen masuk' : 'Sudah absen keluar'}</p>}
+              <Clock className="h-5 w-5 md:h-6 md:w-6 mb-2" />
+              <p className="font-medium text-sm md:text-base">Keluar</p>
+              {!canCheckOut && (
+                <p className="text-xs mt-1">
+                  {!hasCheckedIn ? 'Belum masuk' : 'Sudah dilakukan'}
+                </p>
+              )}
             </button>
           </div>
         </div>
@@ -635,9 +651,28 @@ const AttendanceForm = ({ user, onAttendanceSubmitted, todayAttendance = [] }) =
           <div>
             <div className="flex items-center space-x-2 mb-4">
               <MapPin className="h-5 w-5 text-blue-600" />
-              <h3 className="text-lg font-semibold">Langkah 1: Verifikasi Lokasi</h3>
+              <h3 className="text-lg font-semibold">Verifikasi Lokasi</h3>
             </div>
-            <LocationValidator onLocationValidated={handleLocationValidated} />
+            
+            {officeLocation && (
+              <div className="mb-4 p-3 bg-blue-50 rounded-lg">
+                <p className="text-sm text-blue-700">
+                  <strong>Lokasi Kantor:</strong> {officeLocation.name}<br/>
+                  <strong>Alamat:</strong> {officeLocation.address}
+                </p>
+              </div>
+            )}
+            
+            <LocationValidator 
+              onLocationValidated={handleLocationValidated} 
+              officeLocation={officeLocation}
+            />
+            
+            <div className="mt-4 p-3 bg-yellow-50 rounded-lg">
+              <p className="text-sm text-yellow-700">
+                <strong>Perhatian:</strong> Pastikan GPS/Lokasi perangkat Anda aktif dan Anda berada di area kantor.
+              </p>
+            </div>
           </div>
         )}
 
@@ -645,21 +680,39 @@ const AttendanceForm = ({ user, onAttendanceSubmitted, todayAttendance = [] }) =
           <div>
             <div className="flex items-center space-x-2 mb-4">
               <Camera className="h-5 w-5 text-blue-600" />
-              <h3 className="text-lg font-semibold">Langkah 2: Verifikasi Wajah</h3>
+              <h3 className="text-lg font-semibold">Verifikasi Wajah</h3>
             </div>
+            
             <div className="mb-4 p-3 bg-blue-50 rounded-lg">
-              <p className="text-sm text-blue-700">
-                <strong>Tips untuk verifikasi wajah yang berhasil:</strong><br />
-                • Pastikan pencahayaan cukup terang<br />
-                • Posisikan wajah tepat di tengah kamera<br />
-                • Hindari bayangan pada wajah<br />
-                • Jangan gunakan masker atau kacamata gelap
-              </p>
+              <div className="flex items-start space-x-2">
+                <Info className="h-5 w-5 text-blue-600 flex-shrink-0" />
+                <div>
+                  <p className="text-sm text-blue-700 font-medium">Tips Verifikasi Wajah</p>
+                  <ul className="text-xs text-blue-600 mt-1 list-disc list-inside space-y-1">
+                    <li>Pastikan pencahayaan cukup terang</li>
+                    <li>Hadapkan wajah ke kamera secara lurus</li>
+                    <li>Hindari bayangan pada wajah</li>
+                    <li>Jangan gunakan masker atau kacamata gelap</li>
+                  </ul>
+                </div>
+              </div>
             </div>
+            
             <CustomFaceCapture 
               onFaceCapture={handleFaceCapture} 
               isCapturing={isSubmitting}
+              isMobile={isMobile}
             />
+            
+            <button
+              onClick={() => setStep(1)}
+              className="mt-4 text-sm text-blue-600 hover:text-blue-800 flex items-center"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+              Kembali ke verifikasi lokasi
+            </button>
           </div>
         )}
 
@@ -667,51 +720,84 @@ const AttendanceForm = ({ user, onAttendanceSubmitted, todayAttendance = [] }) =
           <div>
             <div className="flex items-center space-x-2 mb-4">
               <CheckCircle className="h-5 w-5 text-blue-600" /> 
-              <h3 className="text-lg font-semibold">Langkah 3: Kirim Absensi</h3>
+              <h3 className="text-lg font-semibold">Konfirmasi Absensi</h3>
             </div>
             
             {/* Summary */}
             <div className="bg-gray-50 rounded-lg p-4 mb-6">
               <h4 className="font-medium text-gray-900 mb-3">Ringkasan Verifikasi</h4>
-              <div className="space-y-2 text-sm">
+              <div className="space-y-3 text-sm">
                 <div className="flex items-center justify-between">
-                  <span>Lokasi:</span>
-                  <span className="text-green-600 font-medium">✓ Terverifikasi</span> 
+                  <span className="text-gray-600">Lokasi:</span>
+                  <div className="flex items-center text-green-600 font-medium">
+                    <CheckCircle className="h-4 w-4 mr-1" />
+                    <span>Terverifikasi</span>
+                  </div>
                 </div>
+                
                 {cameraVerificationEnabled && (
                   <div className="flex items-center justify-between">
-                    <span>Pengenalan Wajah:</span>
-                    <span className="text-green-600 font-medium">✓ Terverifikasi</span>
+                    <span className="text-gray-600">Wajah:</span>
+                    <div className="flex items-center text-green-600 font-medium">
+                      <CheckCircle className="h-4 w-4 mr-1" />
+                      <span>Terverifikasi</span>
+                    </div>
                   </div>
                 )}
+                
                 <div className="flex items-center justify-between">
-                  <span>Jenis:</span>
+                  <span className="text-gray-600">Jenis Absensi:</span>
                   <span className="font-medium">
                     {attendanceType === 'masuk' ? 'Masuk' : 'Keluar'}
                   </span>
                 </div>
+                
                 <div className="flex items-center justify-between">
-                  <span>Waktu:</span>
+                  <span className="text-gray-600">Waktu:</span>
                   <span className="font-medium">
-                    {new Date().toLocaleTimeString('id-ID')}
+                    {new Date().toLocaleTimeString('id-ID', {
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
                   </span>
                 </div>
+                
+                {distanceFromOffice && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-600">Jarak dari Kantor:</span>
+                    <span className="font-medium">
+                      {distanceFromOffice > 1000 
+                        ? `${(distanceFromOffice/1000).toFixed(1)} km` 
+                        : `${Math.round(distanceFromOffice)} m`}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
 
             <div className="flex space-x-3">
               <button
                 onClick={resetForm}
-                className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                className="flex-1 px-4 py-2 md:py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm md:text-base"
               >
                 Mulai Ulang
               </button>
               <button
                 onClick={submitAttendance}
                 disabled={isSubmitting}
-                className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="flex-1 px-4 py-2 md:py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm md:text-base flex items-center justify-center"
               >
-                {isSubmitting ? 'Mengirim...' : 'Kirim Absensi'}
+                {isSubmitting ? (
+                  <>
+                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Mengirim...
+                  </>
+                ) : (
+                  'Kirim Absensi'
+                )}
               </button>
             </div>
           </div>
@@ -722,7 +808,7 @@ const AttendanceForm = ({ user, onAttendanceSubmitted, todayAttendance = [] }) =
           <div className="mt-6 p-4 bg-red-50 rounded-lg flex items-start space-x-3">
             <AlertCircle className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
             <div className="flex-1">
-              <p className="text-red-700 font-medium">Absensi Gagal</p>
+              <p className="text-red-700 font-medium">Gagal Melakukan Absensi</p>
               <p className="text-red-600 text-sm mt-1">{error}</p>
               <button
                 onClick={resetForm}

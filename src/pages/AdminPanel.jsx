@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { 
   Users, 
   Settings, 
-  BarChart3, 
   MapPin, 
   Clock,
   Shield,
@@ -15,22 +14,14 @@ import {
   AlertTriangle,
   CheckCircle,
   XCircle,
-  DollarSign,
-  TrendingUp,
-  TrendingDown,
   Bell,
   Eye,
-  Edit,
   Building,
   Camera,
   User,
-  Mail,
-  Phone,
-  CreditCard,
   Download,
   Save
 } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { supabase } from '../utils/supabaseClient';
 import Swal from 'sweetalert2';
 import NotificationSystem from '../components/NotificationSystem';
@@ -42,6 +33,7 @@ const AdminPanel = () => {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isCollapsed, setIsCollapsed] = useState(false);
   const [stats, setStats] = useState({
     totalUsers: 0,
     totalAttendance: 0,
@@ -59,8 +51,6 @@ const AdminPanel = () => {
   const [lateEmployees, setLateEmployees] = useState([]);
   const [absentEmployees, setAbsentEmployees] = useState([]);
   const [systemSettings, setSystemSettings] = useState({});
-  const [error, setError] = useState(null);
-  const [success, setSuccess] = useState(null);
   const [showWarningModal, setShowWarningModal] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [showEmployeeDetail, setShowEmployeeDetail] = useState(false);
@@ -70,7 +60,6 @@ const AdminPanel = () => {
     enabled: true,
     required_for_admin: false
   });
-  const [weeklyAttendanceData, setWeeklyAttendanceData] = useState([]);
 
   useEffect(() => {
     checkAccess();
@@ -110,7 +99,6 @@ const AdminPanel = () => {
     try {
       const today = new Date().toISOString().split('T')[0];
       
-      // Fetch basic stats
       const [usersResult, attendanceResult, todayResult, positionsResult] = await Promise.all([
         supabase.from('profiles').select('id, role, status', { count: 'exact' }),
         supabase.from('attendance').select('id', { count: 'exact' }),
@@ -120,14 +108,12 @@ const AdminPanel = () => {
         supabase.from('positions').select('id, department', { count: 'exact' })
       ]);
 
-      // Fetch all employees for absence tracking
       const { data: allEmployees } = await supabase
         .from('profiles')
         .select('id, name, email, avatar_url, employee_id, department, role, status')
         .eq('role', 'karyawan')
         .eq('status', 'active');
 
-      // Get today's attendance with employee details
       const { data: todayAttendanceData } = await supabase
         .from('attendance')
         .select(`
@@ -138,18 +124,14 @@ const AdminPanel = () => {
         .lte('timestamp', `${today}T23:59:59`)
         .eq('status', 'berhasil');
 
-      // Find employees who checked in today
       const checkedInToday = todayAttendanceData
         ?.filter(record => record.type === 'masuk')
         .map(record => record.user_id) || [];
 
-      // Find absent employees (active employees who haven't checked in)
-      // Exclude admin users from absent count
       const absentToday = allEmployees?.filter(emp => 
         !checkedInToday.includes(emp.id) && emp.role !== 'admin'
       ) || [];
 
-      // Auto-create absent records for employees who didn't check in
       if (absentToday.length > 0) {
         const absentRecords = absentToday.map(emp => ({
           user_id: emp.id,
@@ -162,7 +144,6 @@ const AdminPanel = () => {
           work_hours: 0
         }));
 
-        // Insert absent records
         await supabase
           .from('attendance')
           .upsert(absentRecords, { 
@@ -171,11 +152,9 @@ const AdminPanel = () => {
           });
       }
 
-      // Find late employees
       const lateToday = todayAttendanceData
         ?.filter(record => record.type === 'masuk' && record.is_late) || [];
 
-      // Fetch salary stats
       const { data: salaryData } = await supabase
         .from('employee_salaries')
         .select('daily_salary')
@@ -186,13 +165,11 @@ const AdminPanel = () => {
         ? salaryData.reduce((sum, s) => sum + s.daily_salary, 0) / salaryData.length 
         : 0;
 
-      // Fetch active warnings
       const { data: warningsData } = await supabase
         .from('attendance_warnings')
         .select('id')
         .eq('is_resolved', false);
 
-      // Calculate departments
       const departments = [...new Set(positionsResult.data?.map(p => p.department).filter(Boolean))] || [];
 
       setStats({
@@ -209,11 +186,9 @@ const AdminPanel = () => {
         absentToday: absentToday.length
       });
 
-      // Set late and absent employees for detailed view
       setLateEmployees(lateToday);
       setAbsentEmployees(absentToday);
 
-      // Fetch recent activity with employee details
       const { data: recentData } = await supabase
         .from('attendance')
         .select(`
@@ -225,7 +200,6 @@ const AdminPanel = () => {
 
       setRecentActivity(recentData || []);
 
-      // Fetch system settings
       const { data: settingsData } = await supabase
         .from('system_settings')
         .select('*');
@@ -236,73 +210,14 @@ const AdminPanel = () => {
       });
       setSystemSettings(settingsObj);
       
-      // Get camera verification settings
       const cameraVerificationSetting = settingsData?.find(s => s.setting_key === 'camera_verification');
       if (cameraVerificationSetting?.setting_value) {
         setCameraSettings(cameraVerificationSetting.setting_value);
       }
-
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
-    } finally {
-       // This part can be run independently
-       try {
-           const sevenDaysAgo = new Date();
-           sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-
-           const { data: weeklyData, error: weeklyError } = await supabase
-             .from('attendance')
-             .select('timestamp, status, is_late, type')
-             .gte('timestamp', sevenDaysAgo.toISOString());
-
-           if (weeklyError) {
-             console.error('Error fetching weekly attendance:', weeklyError);
-           } else {
-             const processedChartData = processWeeklyDataForChart(weeklyData);
-             setWeeklyAttendanceData(processedChartData);
-           }
-       } catch(e) {
-           console.error("Error processing chart data", e)
-       }
     }
   };
-
- const processWeeklyDataForChart = (data) => {
-   const dayMap = {};
-
-   // Initialize last 7 days
-   for (let i = 6; i >= 0; i--) {
-     const d = new Date();
-     d.setDate(d.getDate() - i);
-     const dayString = d.toISOString().split('T')[0];
-     dayMap[dayString] = {
-       name: d.toLocaleDateString('id-ID', { weekday: 'short' }),
-       Hadir: 0,
-       Terlambat: 0,
-       'Tidak Hadir': 0,
-     };
-   }
-
-   data.forEach(record => {
-     const day = record.timestamp.split('T')[0];
-     if (dayMap[day]) {
-       // Hanya hitung absensi masuk/keluar, abaikan logout/keluar website
-       if ((record.type === 'masuk' || record.type === 'keluar') && record.status === 'berhasil') {
-         if (record.type === 'masuk') {
-           dayMap[day].Hadir += 1;
-           if (record.is_late) {
-             dayMap[day].Terlambat += 1;
-           }
-         }
-         // Tidak perlu menambah untuk keluar, hanya tampilkan hadir/terlambat
-       } else if (record.status === 'tidak_hadir') {
-         dayMap[day]['Tidak Hadir'] += 1;
-       }
-     }
-   });
-
-   return Object.values(dayMap);
- };
 
   const handleSaveCameraSettings = async () => {
     try {
@@ -484,13 +399,22 @@ const AdminPanel = () => {
   return (
     <div className="min-h-screen bg-gray-50 flex">
       {/* Sidebar */}
-      <AdminSidebar user={user} profile={profile} />
+      <AdminSidebar 
+        user={user} 
+        profile={profile} 
+        isCollapsed={isCollapsed} 
+        setIsCollapsed={setIsCollapsed} 
+      />
 
       {/* Main Content */}
-      <div className="flex-1 lg:ml-64 transition-all duration-300 pt-16 lg:pt-0">
+      <div 
+        className={`flex-1 transition-all duration-300 ease-in-out 
+          ${isCollapsed ? 'lg:ml-16' : 'lg:ml-64'} 
+          pt-16 lg:pt-0`}
+      >
         {/* Header */}
         <div className="bg-white shadow-sm border-b fixed top-0 left-0 right-0 lg:relative z-30">
-          <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex items-center justify-between py-3 lg:py-4">
               <div className="lg:hidden">
                 {/* Placeholder for mobile menu button alignment */}
@@ -504,14 +428,14 @@ const AdminPanel = () => {
               <div className="flex items-center space-x-2">
                 <button
                   onClick={() => setShowSettingsModal(true)}
-                  className="p-2 lg:px-3 lg:py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+                  className="p-2 lg:px-3 lg:py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors duration-200"
                 >
                   <Settings className="h-4 w-4" />
                   <span className="hidden lg:inline ml-2">Pengaturan</span>
                 </button>
                 <button
                   onClick={() => setShowExportModal(true)}
-                  className="p-2 lg:px-3 lg:py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  className="p-2 lg:px-3 lg:py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200"
                 >
                   <Download className="h-4 w-4" />
                   <span className="hidden lg:inline ml-2">Export</span>
@@ -522,11 +446,9 @@ const AdminPanel = () => {
           </div>
         </div>
 
-        <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          {/* Notifikasi diganti Swal.fire, tidak perlu render di sini */}
-
-          {/* Enhanced Stats Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6 mb-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          {/* Stats Cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mb-8">
             <StatCard
               icon={Users}
               title="Karyawan"
@@ -557,10 +479,8 @@ const AdminPanel = () => {
             />
           </div>
 
-          {/* Alert Sections for Late and Absent Employees */}
           {(lateEmployees.length > 0 || absentEmployees.length > 0) && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-              {/* Late Employees */}
               {lateEmployees.length > 0 && (
                 <div className="bg-white rounded-lg shadow-md">
                   <div className="px-6 py-4 border-b border-gray-200 bg-orange-50">
@@ -615,7 +535,6 @@ const AdminPanel = () => {
                 </div>
               )}
 
-              {/* Absent Employees */}
               {absentEmployees.length > 0 && (
                 <div className="bg-white rounded-lg shadow-md">
                   <div className="px-6 py-4 border-b border-gray-200 bg-red-50">
@@ -672,87 +591,6 @@ const AdminPanel = () => {
             </div>
           )}
 
-          {/* Main Content Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-            {/* Left Column: Recent Activity */}
-            <div className="lg:col-span-2 bg-white rounded-lg shadow-md">
-              <div className="px-6 py-4 border-b border-gray-200">
-                <div className="flex items-center space-x-2">
-                  <Activity className="h-5 w-5 text-blue-600" />
-                  <h2 className="text-lg font-medium text-gray-900">Aktivitas Terbaru</h2>
-                </div>
-              </div>
-              <div className="p-6 max-h-[450px] overflow-y-auto">
-                {recentActivity.length > 0 ? (
-                  <div className="space-y-4">
-                    {recentActivity.map((activity) => (
-                      <div key={activity.id} className="flex items-center justify-between p-3 border border-gray-100 rounded-lg hover:bg-gray-50 transition-colors">
-                        <div className="flex items-center space-x-3">
-                          <div className={`flex items-center space-x-2 px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(activity.status)}`}>
-                            {getStatusIcon(activity.status)}
-                            <span className="capitalize">
-                              {activity.type === 'masuk' ? 'Masuk' :
-                               activity.type === 'keluar' ? 'Keluar' : 'Tidak Hadir'}
-                            </span>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            {activity.profiles?.avatar_url ? (
-                              <img
-                                src={activity.profiles.avatar_url}
-                                alt={activity.profiles.name}
-                                className="w-7 h-7 rounded-full object-cover"
-                              />
-                            ) : (
-                              <div className="w-7 h-7 bg-gray-200 rounded-full flex items-center justify-center">
-                                <User className="h-4 w-4 text-gray-500" />
-                              </div>
-                            )}
-                            <div>
-                              <p className="font-medium text-sm text-gray-900">
-                                {activity.profiles?.name || 'Unknown User'}
-                              </p>
-                              <p className="text-xs text-gray-600">
-                                {formatDateTime(activity.timestamp)}
-                                {activity.is_late && (
-                                  <span className="ml-2 text-red-600">
-                                    • Terlambat {activity.late_minutes} menit
-                                  </span>
-                                )}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          {(activity.is_late || activity.status === 'tidak_hadir') && activity.profiles?.role !== 'admin' && (
-                            <button
-                              onClick={() => handleIssueWarning(activity.profiles)}
-                              className="text-xs text-red-600 hover:text-red-800 underline"
-                            >
-                              Buat SP
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-8">
-                    <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <Activity className="h-8 w-8 text-gray-400" />
-                    </div>
-                    <p className="text-gray-500">Belum ada aktivitas terbaru</p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Right Column: Weekly Attendance Chart */}
-            <div className="lg:col-span-1">
-              <AttendanceChart data={weeklyAttendanceData} />
-            </div>
-          </div>
-
-          {/* System Info */}
           <div className="bg-white rounded-lg shadow-md">
             <div className="px-6 py-4 border-b border-gray-200">
               <div className="flex items-center space-x-2">
@@ -761,7 +599,7 @@ const AdminPanel = () => {
               </div>
             </div>
             <div className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+              <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                 <div className="flex items-center space-x-3">
                   <Database className="h-8 w-8 text-blue-600" />
                   <div>
@@ -800,9 +638,6 @@ const AdminPanel = () => {
         </div>
       </div>
 
-      {/* ...card under navbar removed as requested... */}
-
-      {/* Warning Letter Modal */}
       {showWarningModal && selectedEmployee && (
         <WarningLetterGenerator 
           employee={selectedEmployee}
@@ -812,7 +647,6 @@ const AdminPanel = () => {
         />
       )}
 
-      {/* Database Export Modal */}
       {showExportModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="max-w-2xl w-full bg-white rounded-xl shadow-lg">
@@ -836,7 +670,6 @@ const AdminPanel = () => {
                       <p className="text-blue-700 mb-4">
                         Untuk mengekspor seluruh database Supabase termasuk skema, data, dan storage, ikuti langkah-langkah berikut:
                       </p>
-                      
                       <div className="space-y-4">
                         <div className="bg-white p-4 rounded-lg border border-blue-200">
                           <h4 className="font-medium text-blue-800 mb-2">1. Akses Dashboard Supabase</h4>
@@ -844,28 +677,24 @@ const AdminPanel = () => {
                             Login ke dashboard Supabase project Anda di <a href="https://app.supabase.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">app.supabase.com</a>
                           </p>
                         </div>
-                        
                         <div className="bg-white p-4 rounded-lg border border-blue-200">
                           <h4 className="font-medium text-blue-800 mb-2">2. Buka Menu Database</h4>
                           <p className="text-sm text-blue-700">
                             Pilih menu "Database" → "Backups" dari sidebar
                           </p>
                         </div>
-                        
                         <div className="bg-white p-4 rounded-lg border border-blue-200">
                           <h4 className="font-medium text-blue-800 mb-2">3. Generate Backup</h4>
                           <p className="text-sm text-blue-700">
                             Klik tombol "Generate backup" untuk membuat backup terbaru dari database Anda
                           </p>
                         </div>
-                        
                         <div className="bg-white p-4 rounded-lg border border-blue-200">
                           <h4 className="font-medium text-blue-800 mb-2">4. Download Backup</h4>
                           <p className="text-sm text-blue-700">
                             Setelah backup selesai dibuat, klik tombol "Download" untuk mengunduh file SQL
                           </p>
                         </div>
-                        
                         <div className="bg-white p-4 rounded-lg border border-blue-200">
                           <h4 className="font-medium text-blue-800 mb-2">5. Export Storage (Opsional)</h4>
                           <p className="text-sm text-blue-700">
@@ -892,7 +721,7 @@ const AdminPanel = () => {
                 <div className="flex justify-end">
                   <button
                     onClick={() => setShowExportModal(false)}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200"
                   >
                     Tutup
                   </button>
@@ -902,8 +731,7 @@ const AdminPanel = () => {
           </div>
         </div>
       )}
-      
-      {/* Camera Settings Modal */}
+
       {showSettingsModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="max-w-md w-full bg-white rounded-xl shadow-lg">
@@ -919,7 +747,6 @@ const AdminPanel = () => {
               </div>
 
               <div className="space-y-6">
-                {/* Camera Verification Settings */}
                 <div className="bg-blue-50 p-4 rounded-lg">
                   <h3 className="font-medium text-blue-900 mb-3">Verifikasi Kamera</h3>
                   <div className="space-y-4">
@@ -938,7 +765,6 @@ const AdminPanel = () => {
                         Aktifkan verifikasi wajah untuk absensi
                       </label>
                     </div>
-                    
                     <div className="p-3 bg-white rounded-lg">
                       <p className="text-sm text-gray-600">
                         {cameraSettings.enabled 
@@ -946,7 +772,6 @@ const AdminPanel = () => {
                           : 'Karyawan dapat absensi tanpa verifikasi wajah'}
                       </p>
                     </div>
-                    
                     <div className="p-3 bg-yellow-50 rounded-lg">
                       <div className="flex items-start space-x-2">
                         <AlertTriangle className="h-4 w-4 text-yellow-600 flex-shrink-0 mt-0.5" />
@@ -962,13 +787,13 @@ const AdminPanel = () => {
                 <div className="flex space-x-3">
                   <button
                     onClick={() => setShowSettingsModal(false)}
-                    className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                    className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors duration-200"
                   >
                     Batal
                   </button>
                   <button
                     onClick={handleSaveCameraSettings}
-                    className="flex-1 bg-blue-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-blue-700 transition-colors"
+                    className="flex-1 bg-blue-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-blue-700 transition-colors duration-200"
                   >
                     <div className="flex items-center justify-center space-x-2">
                       <Save className="h-4 w-4" />
@@ -985,27 +810,24 @@ const AdminPanel = () => {
   );
 };
 
-export default AdminPanel;
-
-// Reusable Stat Card Component
 const StatCard = ({ icon: Icon, title, value, footer, color }) => {
   const colors = {
-    blue: { bg: 'bg-blue-100', text: 'text-blue-600' },
-    green: { bg: 'bg-green-100', text: 'text-green-600' },
-    orange: { bg: 'bg-orange-100', text: 'text-orange-600' },
-    red: { bg: 'bg-red-100', text: 'text-red-600' },
+    blue: { bg: 'bg-blue-50', text: 'text-blue-700' },
+    green: { bg: 'bg-green-50', text: 'text-green-700' },
+    orange: { bg: 'bg-orange-50', text: 'text-orange-700' },
+    red: { bg: 'bg-red-50', text: 'text-red-700' },
   };
   const selectedColor = colors[color] || colors.blue;
 
   return (
-    <div className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow">
+    <div className="bg-white rounded-xl shadow-sm p-5 hover:shadow-md transition-shadow duration-200">
       <div className="flex items-center">
-        <div className={`w-12 h-12 ${selectedColor.bg} rounded-full flex items-center justify-center`}>
-          <Icon className={`h-6 w-6 ${selectedColor.text}`} />
+        <div className={`w-10 h-10 ${selectedColor.bg} rounded-full flex items-center justify-center`}>
+          <Icon className={`h-5 w-5 ${selectedColor.text}`} />
         </div>
-        <div className="ml-4">
-          <p className="text-sm font-medium text-gray-600">{title}</p>
-          <p className="text-2xl font-bold text-gray-900">{value}</p>
+        <div className="ml-3">
+          <p className="text-sm font-medium text-gray-700">{title}</p>
+          <p className="text-xl font-bold text-gray-900">{value}</p>
           <p className={`text-xs ${selectedColor.text}`}>{footer}</p>
         </div>
       </div>
@@ -1013,32 +835,4 @@ const StatCard = ({ icon: Icon, title, value, footer, color }) => {
   );
 };
 
-// Attendance Chart Component
-const AttendanceChart = ({ data }) => (
-  <div className="bg-white rounded-lg shadow-md p-6 h-full">
-    <div className="flex items-center space-x-2 mb-4">
-      <BarChart3 className="h-5 w-5 text-blue-600" />
-      <h2 className="text-lg font-medium text-gray-900">Absensi 7 Hari Terakhir</h2>
-    </div>
-    <div style={{ height: '300px' }}>
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
-          <CartesianGrid strokeDasharray="3 3" vertical={false} />
-          <XAxis dataKey="name" fontSize={12} tickLine={false} axisLine={false} />
-          <YAxis allowDecimals={false} fontSize={12} tickLine={false} axisLine={false} />
-          <Tooltip
-            contentStyle={{
-              borderRadius: '0.5rem',
-              boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)',
-              border: '1px solid #e5e7eb'
-            }}
-          />
-          <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: '12px' }} />
-          <Bar dataKey="Hadir" stackId="a" fill="#22c55e" radius={[4, 4, 0, 0]} />
-          <Bar dataKey="Terlambat" stackId="a" fill="#f97316" radius={[4, 4, 0, 0]} />
-          <Bar dataKey="Tidak Hadir" stackId="a" fill="#ef4444" radius={[4, 4, 0, 0]} />
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
-  </div>
-);
+export default AdminPanel;

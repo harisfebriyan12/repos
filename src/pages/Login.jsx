@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import Swal from 'sweetalert2';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { LogIn, Mail, Lock, AlertCircle, Building2, CheckCircle, Eye, EyeOff } from 'lucide-react';
-import ReCAPTCHA from 'react-google-recaptcha';
 import { supabase, isSupabaseConfigured } from '../utils/supabaseClient';
 import RecaptchaInfo from '../components/RecaptchaInfo';
+
+// Lazy load ReCAPTCHA untuk performa yang lebih baik
+const ReCAPTCHA = lazy(() => import('react-google-recaptcha'));
 
 const Login = () => {
   const navigate = useNavigate();
@@ -18,16 +20,15 @@ const Login = () => {
   const [successMessage, setSuccessMessage] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
   const [captchaToken, setCaptchaToken] = useState(null);
+  const [isCaptchaLoaded, setIsCaptchaLoaded] = useState(false);
   const recaptchaRef = React.createRef();
 
   useEffect(() => {
-    // Check for success message from registration
     if (location.state?.message) {
       setSuccessMessage(location.state.message);
       if (location.state?.email) {
         setFormData(prev => ({ ...prev, email: location.state.email }));
       }
-      // Clear the state to prevent showing message on refresh
       window.history.replaceState({}, document.title);
     }
   }, [location.state]);
@@ -39,45 +40,68 @@ const Login = () => {
     });
   };
 
+  const validateForm = () => {
+    if (!formData.email || !formData.password) {
+      Swal.fire({ 
+        icon: 'warning', 
+        title: 'Form Tidak Lengkap', 
+        text: 'Silakan isi email dan password' 
+      });
+      return false;
+    }
+
+    if (!captchaToken) {
+      Swal.fire({ 
+        icon: 'warning', 
+        title: 'Verifikasi Diperlukan', 
+        html: `
+          <div class="text-left">
+            <p>Silakan verifikasi bahwa Anda bukan robot dengan mencentang reCAPTCHA</p>
+            <p class="mt-2 text-sm text-gray-600">Ini membantu kami mencegah akses tidak sah ke sistem.</p>
+          </div>
+        ` 
+      });
+      return false;
+    }
+
+    return true;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    if (!validateForm()) return;
+    
     setIsLoading(true);
     setError(null);
     setSuccessMessage(null);
-    // Validate reCAPTCHA
-    if (!captchaToken) {
-      Swal.fire({ icon: 'warning', title: 'Verifikasi Diperlukan', text: 'Silakan verifikasi bahwa Anda bukan robot dengan mencentang reCAPTCHA' });
-      setIsLoading(false);
-      return;
-    }
+
     try {
-      // Check if Supabase is configured
       if (!isSupabaseConfigured()) {
         throw new Error('Sistem belum dikonfigurasi. Silakan hubungi administrator untuk mengatur koneksi database.');
       }
+
       const { data, error: signInError } = await supabase.auth.signInWithPassword({
         email: formData.email,
         password: formData.password
       });
-      if (signInError) {
-        throw signInError;
-      }
+
+      if (signInError) throw signInError;
+
       if (data.user) {
-        // Fetch user profile to get role
         const { data: profile, error: profileError } = await supabase
           .from('profiles')
           .select('role, name, is_face_registered, status')
           .eq('id', data.user.id)
           .single();
+
         if (profileError) {
-          // Continue without profile for now
-        } else {
-          // Check if user is active
-          if (profile.status !== 'active') {
-            await supabase.auth.signOut();
-            throw new Error('Akun Anda tidak aktif. Silakan hubungi administrator.');
-          }
+          console.error('Error fetching profile:', profileError);
+        } else if (profile.status !== 'active') {
+          await supabase.auth.signOut();
+          throw new Error('Akun Anda tidak aktif. Silakan hubungi administrator.');
         }
+
         // Log activity
         try {
           await supabase.from('activity_logs').insert([{
@@ -91,7 +115,10 @@ const Login = () => {
             ip_address: 'unknown',
             user_agent: navigator.userAgent
           }]);
-        } catch (logError) {}
+        } catch (logError) {
+          console.error('Error logging activity:', logError);
+        }
+
         // Update last login
         try {
           await supabase
@@ -104,47 +131,105 @@ const Login = () => {
               }
             })
             .eq('id', data.user.id);
-        } catch (updateError) {}
-        // Success alert
+        } catch (updateError) {
+          console.error('Error updating last login:', updateError);
+        }
+
+        // Success alert with better UX
         let welcomeName = profile?.name || data.user.email || '';
-        await Swal.fire({ icon: 'success', title: 'Login Berhasil', html: `Selamat datang, <b>${welcomeName}</b>!` });
-        // Admin tetap di halaman kelola user, karyawan bisa diarahkan jika perlu
-        // navigate('/dashboard');
+        await Swal.fire({
+          icon: 'success',
+          title: 'Login Berhasil',
+          html: `
+            <div class="text-center">
+              <div class="animate-bounce mb-4">
+                <CheckCircle class="h-12 w-12 text-green-500 mx-auto" />
+              </div>
+              <h3 class="text-xl font-bold text-gray-800">Selamat datang, <span class="text-blue-600">${welcomeName}</span>!</h3>
+              <p class="mt-2 text-gray-600">Anda akan diarahkan ke dashboard</p>
+            </div>
+          `,
+          showConfirmButton: false,
+          timer: 2000,
+          timerProgressBar: true,
+          didOpen: () => {
+            Swal.showLoading();
+          }
+        });
+
+        // Redirect based on role
+        if (profile?.role === 'admin') {
+          navigate('/admin/dashboard');
+        } else {
+          navigate('/dashboard');
+        }
       }
     } catch (err) {
       let errorMessage = 'Terjadi kesalahan saat login';
-      if (err.message === 'Invalid login credentials') {
-        errorMessage = 'Email atau password salah';
-      } else if (err.message?.includes('Email not confirmed')) {
-        errorMessage = 'Email belum dikonfirmasi. Silakan cek email Anda.';
-      } else if (err.message?.includes('Too many requests')) {
-        errorMessage = 'Terlalu banyak percobaan login. Silakan coba lagi nanti.';
-      } else if (err.message?.includes('Sistem belum dikonfigurasi')) {
-        errorMessage = 'Sistem belum dikonfigurasi. Silakan hubungi administrator untuk mengatur koneksi database.';
-      } else if (err.message?.includes('Akun Anda tidak aktif')) {
-        errorMessage = err.message;
-      } else {
-        errorMessage = err.message || 'Terjadi kesalahan saat login';
-      }
-      await Swal.fire({ icon: 'error', title: 'Login Gagal', text: errorMessage });
+      
+      const errorMap = {
+        'Invalid login credentials': 'Email atau password salah',
+        'Email not confirmed': 'Email belum dikonfirmasi. Silakan cek email Anda.',
+        'Too many requests': 'Terlalu banyak percobaan login. Silakan coba lagi nanti.',
+        'Sistem belum dikonfigurasi': 'Sistem belum dikonfigurasi. Silakan hubungi administrator.',
+        'Akun Anda tidak aktif': err.message
+      };
+
+      errorMessage = errorMap[err.message] || err.message || errorMessage;
+
+      await Swal.fire({
+        icon: 'error',
+        title: 'Login Gagal',
+        html: `
+          <div class="text-left">
+            <p class="font-medium">${errorMessage}</p>
+            ${err.message.includes('credentials') ? (
+              '<p class="mt-2 text-sm text-gray-600">Pastikan email dan password yang Anda masukkan benar.</p>'
+            ) : ''}
+          </div>
+        `,
+        confirmButtonColor: '#3b82f6'
+      });
+
+      // Reset captcha on error
+      recaptchaRef.current?.reset();
+      setCaptchaToken(null);
     } finally {
       setIsLoading(false);
     }
   };
+
   const handleCaptchaChange = (token) => {
     setCaptchaToken(token);
   };
 
   const handleCaptchaExpired = () => {
     setCaptchaToken(null);
+    Swal.fire({
+      icon: 'info',
+      title: 'Verifikasi Kadaluarsa',
+      text: 'Silakan verifikasi ulang bahwa Anda bukan robot',
+      timer: 3000,
+      showConfirmButton: false
+    });
+  };
+
+  const handleCaptchaError = () => {
+    setCaptchaToken(null);
+    Swal.fire({
+      icon: 'error',
+      title: 'Verifikasi Gagal',
+      text: 'Terjadi kesalahan saat memverifikasi reCAPTCHA. Silakan coba lagi.',
+      confirmButtonColor: '#3b82f6'
+    });
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-600 to-indigo-800 flex items-center justify-center p-4">
-      <div className="max-w-md w-full">
+      <div className="max-w-md w-full animate-fade-in">
         {/* Logo and Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-20 h-20 bg-white rounded-full mb-6 shadow-lg">
+          <div className="inline-flex items-center justify-center w-20 h-20 bg-white rounded-full mb-6 shadow-lg transform transition-transform hover:scale-105">
             <Building2 className="h-10 w-10 text-blue-600" />
           </div>
           <h1 className="text-3xl font-bold text-white mb-2">Portal Karyawan</h1>
@@ -152,18 +237,14 @@ const Login = () => {
         </div>
 
         {/* Login Form */}
-        <div className="bg-white rounded-xl shadow-2xl p-8 backdrop-blur-sm">
+        <div className="bg-white rounded-xl shadow-2xl p-8 backdrop-blur-sm transition-all hover:shadow-3xl">
           <div className="mb-8 text-center">
             <h2 className="text-2xl font-bold text-gray-900 tracking-tight">Masuk ke Akun Anda</h2>
             <p className="text-gray-500 mt-1">Silakan login menggunakan email dan password</p>
           </div>
 
-
-          {/* Notifikasi diganti SweetAlert2 */}
-
-          {/* Supabase Configuration Warning */}
           {!isSupabaseConfigured() && (
-            <div className="mb-6 p-4 bg-yellow-50 rounded-lg flex items-start space-x-3">
+            <div className="mb-6 p-4 bg-yellow-50 rounded-lg flex items-start space-x-3 animate-pulse">
               <AlertCircle className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" />
               <div>
                 <p className="text-yellow-800 font-medium">Sistem Belum Dikonfigurasi</p>
@@ -189,7 +270,7 @@ const Login = () => {
                     value={formData.email}
                     onChange={handleChange}
                     required
-                    className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors shadow-sm focus:shadow-md bg-gray-50"
+                    className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 shadow-sm hover:shadow-md focus:shadow-md bg-gray-50"
                     placeholder="Masukkan email Anda"
                   />
                 </div>
@@ -207,33 +288,39 @@ const Login = () => {
                     value={formData.password}
                     onChange={handleChange}
                     required
-                    className="w-full pl-10 pr-10 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors shadow-sm focus:shadow-md bg-gray-50"
+                    className="w-full pl-10 pr-10 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 shadow-sm hover:shadow-md focus:shadow-md bg-gray-50"
                     placeholder="Masukkan password Anda"
                   />
                   <button
                     type="button"
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
                     onClick={() => setShowPassword(!showPassword)}
+                    aria-label={showPassword ? "Sembunyikan password" : "Tampilkan password"}
                   >
                     {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                   </button>
                 </div>
               </div>
             </div>
-            {/* Spacing for mobile */}
-            <div className="block md:hidden h-2" />
-            {/* End modern mobile form */}
 
-            <div className="mt-6">
-              <div className="flex justify-center">
+            {/* ReCAPTCHA */}
+            <div className="mt-6 flex justify-center">
+              <Suspense fallback={
+                <div className="h-20 w-full flex items-center justify-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                </div>
+              }>
                 <ReCAPTCHA
                   ref={recaptchaRef}
                   sitekey={import.meta.env.VITE_RECAPTCHA_SITE_KEY || "6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI"}
                   onChange={handleCaptchaChange}
                   onExpired={handleCaptchaExpired}
+                  onErrored={handleCaptchaError}
                   theme="light"
+                  className="transform transition-transform hover:scale-[1.02]"
+                  onLoad={() => setIsCaptchaLoaded(true)}
                 />
-              </div>
+              </Suspense>
             </div>
 
             <button
@@ -241,28 +328,27 @@ const Login = () => {
               disabled={isLoading || !isSupabaseConfigured() || !captchaToken}
               className={`w-full py-3 px-4 rounded-lg font-medium focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all 
                 ${isLoading ? 'bg-blue-400 text-white cursor-wait' : 'bg-blue-600 text-white hover:bg-blue-700'}
-                ${(!isSupabaseConfigured() || !captchaToken) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                ${(!isSupabaseConfigured() || !captchaToken) ? 'opacity-70 cursor-not-allowed' : 'shadow-md hover:shadow-lg'}
+                transform hover:scale-[1.01] active:scale-[0.99]`}
               aria-busy={isLoading}
             >
               {isLoading ? (
                 <span className="flex items-center justify-center space-x-2">
                   <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V8H4z"></path>
                   </svg>
                   <span>Memproses...</span>
                 </span>
               ) : (
-                'Masuk'
+                <span className="flex items-center justify-center space-x-2">
+                  <LogIn className="h-5 w-5" />
+                  <span>Masuk</span>
+                </span>
               )}
             </button>
-
-            {/* Lupa Password dihapus sesuai permintaan */}
           </form>
-
-         
         </div>
-     
       </div>
     </div>
   );
