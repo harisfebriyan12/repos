@@ -23,6 +23,13 @@ const AttendanceForm = ({ user, onAttendanceSubmitted, todayAttendance = [] }) =
   const [officeLocation, setOfficeLocation] = useState(null);
   const [distanceFromOffice, setDistanceFromOffice] = useState(null);
   const [isMobile, setIsMobile] = useState(false);
+  const [workHoursSettings, setWorkHoursSettings] = useState({
+    startTime: '08:00',
+    endTime: '17:00',
+    lateThreshold: 15,
+    earlyLeaveThreshold: 15,
+    breakDuration: 60
+  });
 
   useEffect(() => {
     // Check if mobile device
@@ -40,6 +47,7 @@ const AttendanceForm = ({ user, onAttendanceSubmitted, todayAttendance = [] }) =
     determineAttendanceType();
     fetchCameraSettings();
     fetchOfficeLocation();
+    fetchWorkHoursSettings();
   }, [user, todayAttendance]);
 
   const fetchOfficeLocation = async () => {
@@ -48,6 +56,26 @@ const AttendanceForm = ({ user, onAttendanceSubmitted, todayAttendance = [] }) =
       setOfficeLocation(location);
     } catch (error) {
       console.error('Error fetching office location:', error);
+    }
+  };
+
+  const fetchWorkHoursSettings = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('system_settings')
+        .select('setting_value')
+        .eq('setting_key', 'work_hours')
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        throw error;
+      }
+
+      if (data?.setting_value) {
+        setWorkHoursSettings(prevSettings => ({ ...prevSettings, ...data.setting_value }));
+      }
+    } catch (error) {
+      console.error('Error fetching work hours settings:', error);
     }
   };
 
@@ -209,8 +237,9 @@ const AttendanceForm = ({ user, onAttendanceSubmitted, todayAttendance = [] }) =
   const calculateWorkDetails = () => {
     const now = new Date();
     const currentTime = now.toTimeString().slice(0, 5);
-    const workStartTime = '08:00';
-    const workEndTime = '17:00';
+    const workStartTime = workHoursSettings.startTime;
+    const workEndTime = workHoursSettings.endTime;
+    const lateThreshold = workHoursSettings.lateThreshold || 15;
     
     let isLate = false;
     let lateMinutes = 0;
@@ -218,7 +247,13 @@ const AttendanceForm = ({ user, onAttendanceSubmitted, todayAttendance = [] }) =
     let overtimeHours = 0;
 
     if (attendanceType === 'masuk') {
-      isLate = currentTime > '08:15';
+      // Calculate late threshold time
+      const [startHour, startMinute] = workStartTime.split(':').map(Number);
+      const thresholdTime = new Date();
+      thresholdTime.setHours(startHour, startMinute + lateThreshold, 0, 0);
+      const thresholdTimeString = thresholdTime.toTimeString().slice(0, 5);
+      
+      isLate = currentTime > thresholdTimeString;
       if (isLate) {
         const startTime = new Date(`1970-01-01T${workStartTime}:00`);
         const currentDateTime = new Date(`1970-01-01T${currentTime}:00`);
@@ -229,16 +264,53 @@ const AttendanceForm = ({ user, onAttendanceSubmitted, todayAttendance = [] }) =
         const checkInTime = new Date(lastAttendance.timestamp);
         const checkOutTime = now;
         const totalMinutes = Math.floor((checkOutTime - checkInTime) / 60000);
-        workHours = Math.max(0, totalMinutes / 60);
         
-        if (workHours > 9) {
-          overtimeHours = workHours - 9;
-          workHours = 9;
+        // Subtract break duration
+        const breakDuration = workHoursSettings.breakDuration || 60;
+        const workMinutes = Math.max(0, totalMinutes - breakDuration);
+        workHours = Math.max(0, workMinutes / 60);
+        
+        // Calculate standard work hours (from start to end time)
+        const [startHour, startMinute] = workStartTime.split(':').map(Number);
+        const [endHour, endMinute] = workEndTime.split(':').map(Number);
+        const standardWorkMinutes = (endHour * 60 + endMinute) - (startHour * 60 + startMinute) - breakDuration;
+        const standardWorkHours = standardWorkMinutes / 60;
+        
+        if (workHours > standardWorkHours) {
+          overtimeHours = workHours - standardWorkHours;
+          workHours = standardWorkHours;
         }
       }
     }
 
     return { isLate, lateMinutes, workHours, overtimeHours };
+  };
+
+  const isWithinWorkingHours = () => {
+    const now = new Date();
+    const currentTime = now.toTimeString().slice(0, 5);
+    const workStartTime = workHoursSettings.startTime;
+    const workEndTime = workHoursSettings.endTime;
+    
+    // Allow some buffer before start time (30 minutes early)
+    const [startHour, startMinute] = workStartTime.split(':').map(Number);
+    const earlyStartTime = new Date();
+    earlyStartTime.setHours(startHour, startMinute - 30, 0, 0);
+    const earlyStartTimeString = earlyStartTime.toTimeString().slice(0, 5);
+    
+    // Allow some buffer after end time (30 minutes late)
+    const [endHour, endMinute] = workEndTime.split(':').map(Number);
+    const lateEndTime = new Date();
+    lateEndTime.setHours(endHour, endMinute + 30, 0, 0);
+    const lateEndTimeString = lateEndTime.toTimeString().slice(0, 5);
+    
+    if (attendanceType === 'masuk') {
+      return currentTime >= earlyStartTimeString && currentTime <= lateEndTimeString;
+    } else if (attendanceType === 'keluar') {
+      return currentTime >= workStartTime && currentTime <= lateEndTimeString;
+    }
+    
+    return true;
   };
 
   const submitAttendance = async () => {
@@ -249,6 +321,27 @@ const AttendanceForm = ({ user, onAttendanceSubmitted, todayAttendance = [] }) =
     
     if (cameraVerificationEnabled && !faceFingerprint) {
       setError('Silakan selesaikan verifikasi wajah');
+      return;
+    }
+
+    // Check if within working hours
+    if (!isWithinWorkingHours()) {
+      const workStartTime = workHoursSettings.startTime;
+      const workEndTime = workHoursSettings.endTime;
+      
+      Swal.fire({
+        icon: 'warning',
+        title: 'Di Luar Jam Kerja',
+        html: `
+          <div class="text-left">
+            <p class="mb-2">Absensi ${attendanceType} hanya dapat dilakukan pada jam kerja:</p>
+            <p class="mb-2"><strong>Jam Kerja:</strong> ${workStartTime} - ${workEndTime}</p>
+            <p class="text-sm text-gray-600">Jika Anda perlu melakukan absensi di luar jam kerja, silakan hubungi HRD.</p>
+          </div>
+        `,
+        confirmButtonText: 'Mengerti',
+        confirmButtonColor: '#3085d6'
+      });
       return;
     }
 
@@ -431,7 +524,7 @@ const AttendanceForm = ({ user, onAttendanceSubmitted, todayAttendance = [] }) =
   if (cameraVerificationEnabled && !storedFingerprint) {
     if (error && error.includes('Foto profil')) {
       return (
-        <div className="max-w-md mx-auto bg-white rounded-xl shadow-md overflow-hidden md:max-w-2xl">
+        <div className="max-w-md mx-auto bg-white rounded-xl shadow-md overflow-hidden md:max-w-3xl">
           <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-8 text-white">
             <h2 className="text-2xl font-bold mb-2">Absensi Karyawan</h2>
             <p className="opacity-90">Setup diperlukan untuk melanjutkan</p>
@@ -479,7 +572,7 @@ const AttendanceForm = ({ user, onAttendanceSubmitted, todayAttendance = [] }) =
     }
 
     return (
-      <div className="max-w-md mx-auto bg-white rounded-xl shadow-md overflow-hidden md:max-w-2xl">
+      <div className="max-w-md mx-auto bg-white rounded-xl shadow-md overflow-hidden md:max-w-3xl">
         <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-8 text-white">
           <h2 className="text-2xl font-bold mb-2">Absensi Karyawan</h2>
           <p className="opacity-90">Memuat data verifikasi...</p>
@@ -493,7 +586,7 @@ const AttendanceForm = ({ user, onAttendanceSubmitted, todayAttendance = [] }) =
   }
 
   return (
-    <div className="max-w-md mx-auto bg-white rounded-xl shadow-md overflow-hidden md:max-w-2xl">
+    <div className="max-w-md mx-auto bg-white rounded-xl shadow-md overflow-hidden md:max-w-3xl">
       {/* Header */}
       <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-8 text-white">
         <div className="flex items-center space-x-4 mb-4">
@@ -541,67 +634,60 @@ const AttendanceForm = ({ user, onAttendanceSubmitted, todayAttendance = [] }) =
       </div>
 
       <div className="p-4 md:p-6">
-        {/* Progress Steps - Mobile */}
-        {isMobile && (
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex flex-col items-center">
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center font-medium text-sm ${
-                step >= 1 ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'
-              }`}>
-                {step > 1 ? <CheckCircle className="h-4 w-4" /> : 1}
-              </div>
-              <span className="text-xs mt-1">Lokasi</span>
-            </div>
-            <div className="flex-1 h-1 mx-2 bg-gray-200 relative">
-              <div className={`absolute top-0 left-0 h-full ${
-                step > 1 ? 'bg-blue-600' : 'bg-gray-200'
-              }`} style={{ width: step > 1 ? '100%' : '0%' }}></div>
-            </div>
-            <div className="flex flex-col items-center">
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center font-medium text-sm ${
-                step >= 2 ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'
-              }`}>
-                {step > 2 ? <CheckCircle className="h-4 w-4" /> : 2}
-              </div>
-              <span className="text-xs mt-1">Wajah</span>
-            </div>
-            <div className="flex-1 h-1 mx-2 bg-gray-200 relative">
-              <div className={`absolute top-0 left-0 h-full ${
-                step > 2 ? 'bg-blue-600' : 'bg-gray-200'
-              }`} style={{ width: step > 2 ? '100%' : '0%' }}></div>
-            </div>
-            <div className="flex flex-col items-center">
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center font-medium text-sm ${
-                step >= 3 ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'
-              }`}>
-                3
-              </div>
-              <span className="text-xs mt-1">Kirim</span>
-            </div>
-          </div>
-        )}
+        {(() => {
+          const allSteps = [
+            { id: 1, name: 'Lokasi' },
+            { id: 2, name: 'Wajah' },
+            { id: 3, name: 'Kirim' },
+          ];
+          const steps = cameraVerificationEnabled ? allSteps : [allSteps[0], allSteps[2]];
 
-        {/* Progress Steps - Desktop */}
-        {!isMobile && (
-          <div className="flex items-center justify-between mb-8">
-            {[1, 2, 3].map((stepNum) => (
-              <div key={stepNum} className="flex items-center">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center font-medium ${
-                  step >= stepNum
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-200 text-gray-600'
-                }`}>
-                  {stepNum < step ? <CheckCircle className="h-5 w-5" /> : stepNum}
-                </div>
-                {stepNum < 3 && (
-                  <div className={`flex-1 h-1 mx-4 ${
-                    step > stepNum ? 'bg-blue-600' : 'bg-gray-200'
-                  }`} />
-                )}
+          if (isMobile) {
+            return (
+              <div className="flex items-center justify-between mb-6">
+                {steps.map((s, index) => (
+                  <React.Fragment key={s.id}>
+                    <div className="flex flex-col items-center">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center font-medium text-sm transition-colors ${
+                        step >= s.id ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'
+                      }`}>
+                        {step > s.id ? <CheckCircle className="h-4 w-4" /> : s.id}
+                      </div>
+                      <span className="text-xs mt-1">{s.name}</span>
+                    </div>
+                    {index < steps.length - 1 && (
+                      <div className="flex-1 h-1 mx-2 bg-gray-200 relative">
+                        <div className={`absolute top-0 left-0 h-full transition-all duration-300 ${
+                          step > s.id ? 'bg-blue-600' : 'bg-gray-200'
+                        }`} style={{ width: step > s.id ? '100%' : '0%' }}></div>
+                      </div>
+                    )}
+                  </React.Fragment>
+                ))}
               </div>
-            ))}
-          </div>
-        )}
+            );
+          }
+
+          return (
+            <div className="flex items-center mb-8">
+              {steps.map((s, index) => (
+                <React.Fragment key={s.id}>
+                  <div className="flex flex-col items-center text-center w-28">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center font-medium transition-colors duration-300 ${
+                      step >= s.id ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'
+                    }`}>
+                      {step > s.id ? <CheckCircle className="h-5 w-5" /> : s.id}
+                    </div>
+                    <p className={`mt-2 text-sm font-medium transition-colors duration-300 ${step >= s.id ? 'text-blue-700' : 'text-gray-500'}`}>{s.name}</p>
+                  </div>
+                  {index < steps.length - 1 && (
+                    <div className={`flex-1 h-1 mx-4 rounded-full transition-colors duration-300 ${step > s.id ? 'bg-blue-600' : 'bg-gray-200'}`}></div>
+                  )}
+                </React.Fragment>
+              ))}
+            </div>
+          );
+        })()}
 
         {/* Attendance Type Selection */}
         <div className="mb-6">

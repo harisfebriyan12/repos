@@ -115,6 +115,11 @@ const AttendanceHistory = () => {
   const applyFilters = () => {
     let filtered = [...attendanceData];
 
+    // Filter out logout records and only keep masuk/keluar
+    filtered = filtered.filter(record => 
+      record.type === 'masuk' || record.type === 'keluar'
+    );
+
     // Filter by employee if admin
     if (userRole === 'admin' && selectedEmployee !== 'all') {
       filtered = filtered.filter(record => 
@@ -143,16 +148,6 @@ const AttendanceHistory = () => {
     if (filters.status) {
       filtered = filtered.filter(record => record.status === filters.status);
     }
-
-    // Hilangkan duplikasi absensi 'Tidak Hadir' (jam sama, status sama, lokasi sama)
-    const seen = new Set();
-    filtered = filtered.filter(record => {
-      if (record.status !== 'tidak_hadir') return true;
-      const key = `${record.timestamp}|${record.status}|${record.latitude || ''}|${record.longitude || ''}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
 
     setFilteredData(filtered);
   };
@@ -368,49 +363,68 @@ const AttendanceHistory = () => {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Filters */}
+        {/* Filters - Improved Mobile Design */}
         <div className="bg-white rounded-lg shadow-md mb-6">
-          <div className="px-6 py-4 border-b border-gray-200">
+          <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200">
             <div className="flex items-center space-x-2">
-              <Filter className="h-5 w-5 text-blue-600" />
-              <h2 className="text-lg font-medium text-gray-900">Filter Laporan</h2>
+              <Filter className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
+              <h2 className="text-base sm:text-lg font-medium text-gray-900">Filter Laporan</h2>
             </div>
           </div>
-          <div className="p-6">
-            {/* Mobile: Only show Jenis Absensi & Status */}
-            <div className="grid grid-cols-1 gap-4 md:hidden">
+          <div className="p-4 sm:p-6">
+            {/* Mobile: Compact 2-column grid */}
+            <div className="grid grid-cols-2 gap-3 sm:hidden">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Jenis Absensi</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Jenis</label>
                 <select
                   name="type"
                   value={filters.type}
                   onChange={handleFilterChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-transparent"
                 >
-                  <option value="">Semua Jenis</option>
+                  <option value="">Semua</option>
                   <option value="masuk">Masuk</option>
                   <option value="keluar">Keluar</option>
-                  <option value="absent">Tidak Hadir</option>
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Status</label>
                 <select
                   name="status"
                   value={filters.status}
                   onChange={handleFilterChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-transparent"
                 >
-                  <option value="">Semua Status</option>
+                  <option value="">Semua</option>
                   <option value="berhasil">Berhasil</option>
                   <option value="wajah_tidak_valid">Wajah Invalid</option>
                   <option value="lokasi_tidak_valid">Lokasi Invalid</option>
-                  <option value="tidak_hadir">Tidak Hadir</option>
                 </select>
               </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Dari</label>
+                <input
+                  type="date"
+                  name="startDate"
+                  value={filters.startDate}
+                  onChange={handleFilterChange}
+                  className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Sampai</label>
+                <input
+                  type="date"
+                  name="endDate"
+                  value={filters.endDate}
+                  onChange={handleFilterChange}
+                  className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
             </div>
+            
             {/* Desktop: Show all filters */}
-            <div className="hidden md:grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            <div className="hidden sm:grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {/* Employee Filter - Only for Admin */}
               {userRole === 'admin' && (
                 <div>
@@ -463,7 +477,6 @@ const AttendanceHistory = () => {
                   <option value="">Semua Jenis</option>
                   <option value="masuk">Masuk</option>
                   <option value="keluar">Keluar</option>
-                  <option value="absent">Tidak Hadir</option>
                 </select>
               </div>
               <div>
@@ -478,14 +491,17 @@ const AttendanceHistory = () => {
                   <option value="berhasil">Berhasil</option>
                   <option value="wajah_tidak_valid">Wajah Invalid</option>
                   <option value="lokasi_tidak_valid">Lokasi Invalid</option>
-                  <option value="tidak_hadir">Tidak Hadir</option>
                 </select>
               </div>
             </div>
-            <div className="mt-4 flex justify-end">
+            
+            <div className="mt-3 sm:mt-4 flex justify-between items-center">
+              <div className="text-xs sm:text-sm text-gray-500">
+                Menampilkan {filteredData.length} dari {attendanceData.length} data
+              </div>
               <button
                 onClick={clearFilters}
-                className="px-4 py-2 text-gray-600 hover:bg-gray-50 rounded-lg transition-colors"
+                className="px-3 py-1.5 text-xs sm:text-sm text-gray-600 hover:bg-gray-50 rounded-lg transition-colors"
               >
                 Reset Filter
               </button>
@@ -512,113 +528,178 @@ const AttendanceHistory = () => {
           </div>
           
           {filteredData.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Tanggal & Waktu
-                    </th>
-                    {userRole === 'admin' && (
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Karyawan
-                      </th>
-                    )}
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Jenis
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Keterlambatan
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Jam Kerja
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Lokasi
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {filteredData.map((record) => {
-                    const dateTime = formatDateTime(record.timestamp);
-                    return (
-                      <tr key={record.id} className="hover:bg-blue-50 cursor-pointer transition" onClick={() => setSelectedRecord(record)}>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div>
-                            <div className="text-sm font-medium text-gray-900">
-                              {dateTime.date}
-                            </div>
-                            <div className="text-sm text-gray-500">
-                              {dateTime.time}
-                            </div>
-                          </div>
-                        </td>
-                        {userRole === 'admin' && (
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div>
-                              <div className="text-sm font-medium text-gray-900">
-                                {record.profiles?.name || 'Unknown'}
-                              </div>
-                              <div className="text-sm text-gray-500">
-                                {record.profiles?.department || '-'}
-                              </div>
-                            </div>
-                          </td>
-                        )}
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 capitalize">
-                            {record.type === 'masuk' ? 'Masuk' : record.type === 'keluar' ? 'Keluar' : 'Tidak Hadir'}
+            <>
+              {/* Mobile: Card Layout */}
+              <div className="sm:hidden space-y-3">
+                {filteredData.map((record) => {
+                  const dateTime = formatDateTime(record.timestamp);
+                  return (
+                    <div key={record.id} className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center space-x-2">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                            record.type === 'masuk' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'
+                          }`}>
+                            {record.type === 'masuk' ? 'Masuk' : 'Keluar'}
                           </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className={`inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(record.status)}`}>
+                          <div className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(record.status)}`}>
                             {getStatusIcon(record.status)}
                             <span>{getStatusText(record.status)}</span>
                           </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {dateTime.time}
+                        </div>
+                      </div>
+                      <div className="text-sm font-medium text-gray-900 mb-1">
+                        {dateTime.date}
+                      </div>
+                      {userRole === 'admin' && (
+                        <div className="text-xs text-gray-600 mb-1">
+                          {record.profiles?.name || 'Unknown'} • {record.profiles?.department || '-'}
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between text-xs text-gray-500">
+                        <span>
                           {record.is_late ? (
-                            <div className="text-sm text-red-600">
-                              <span className="font-medium">{record.late_minutes} menit</span>
-                            </div>
+                            <span className="text-red-600">Terlambat {record.late_minutes} menit</span>
                           ) : (
-                            <div className="text-sm text-green-600">
-                              <span className="font-medium">Tepat Waktu</span>
-                            </div>
+                            <span className="text-green-600">Tepat Waktu</span>
                           )}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">
-                            {record.work_hours > 0 ? (
-                              <span>{record.work_hours} jam</span>
+                        </span>
+                        <span>
+                          {record.work_hours > 0 ? `${record.work_hours} jam` : '-'}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Desktop: Table Layout */}
+              <div className="hidden sm:block overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Tanggal & Waktu
+                      </th>
+                      {userRole === 'admin' && (
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Karyawan
+                        </th>
+                      )}
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Jenis
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Status
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Keterlambatan
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Jam Kerja
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Lokasi
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {filteredData.map((record) => {
+                      const dateTime = formatDateTime(record.timestamp);
+                      return (
+                        <tr key={record.id} className="hover:bg-blue-50 cursor-pointer transition" onClick={() => setSelectedRecord(record)}>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div>
+                              <div className="text-sm font-medium text-gray-900">
+                                {dateTime.date}
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                {dateTime.time}
+                              </div>
+                            </div>
+                          </td>
+                          {userRole === 'admin' && (
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div>
+                                <div className="text-sm font-medium text-gray-900">
+                                  {record.profiles?.name || 'Unknown'}
+                                </div>
+                                <div className="text-sm text-gray-500">
+                                  {record.profiles?.department || '-'}
+                                </div>
+                              </div>
+                            </td>
+                          )}
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 capitalize">
+                              {record.type === 'masuk' ? 'Masuk' : 'Keluar'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className={`inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(record.status)}`}>
+                              {getStatusIcon(record.status)}
+                              <span>{getStatusText(record.status)}</span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            {record.is_late ? (
+                              <div className="text-sm text-red-600">
+                                <span className="font-medium">{record.late_minutes} menit</span>
+                              </div>
                             ) : (
-                              <span>-</span>
+                              <div className="text-sm text-green-600">
+                                <span className="font-medium">Tepat Waktu</span>
+                              </div>
                             )}
-                          </div>
-                          {record.overtime_hours > 0 && (
-                            <div className="text-xs text-blue-600">
-                              Lembur: {record.overtime_hours} jam
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm text-gray-900">
+                              {record.work_hours > 0 ? (
+                                <span>{record.work_hours} jam</span>
+                              ) : (
+                                <span>-</span>
+                              )}
                             </div>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {record.latitude && record.longitude ? (
-                            <div className="flex items-center">
-                              <MapPin className="h-4 w-4 mr-1 text-gray-400" />
-                              <span>
-                                {record.latitude.toFixed(4)}, {record.longitude.toFixed(4)}
-                              </span>
-                            </div>
-                          ) : (
-                            <span className="text-gray-400">Tidak ada lokasi</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
+                            {record.overtime_hours > 0 && (
+                              <div className="text-xs text-blue-600">
+                                Lembur: {record.overtime_hours} jam
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {record.latitude && record.longitude ? (
+                              <div className="flex items-center">
+                                <MapPin className="h-4 w-4 mr-1 text-gray-400" />
+                                <span>
+                                  {record.latitude.toFixed(4)}, {record.longitude.toFixed(4)}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-gray-400">Tidak ada lokasi</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : (
+            <div className="text-center py-12">
+              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Calendar className="h-8 w-8 text-gray-400" />
+              </div>
+              <p className="text-gray-500 text-lg mb-2">Tidak ada data absensi ditemukan</p>
+              <p className="text-gray-400">Coba sesuaikan filter atau periksa kembali nanti</p>
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Modal Detail Absensi */}
       {selectedRecord && (
         <div className="fixed inset-0 z-50 bg-black bg-opacity-40 flex items-center justify-center p-4">
@@ -631,7 +712,9 @@ const AttendanceHistory = () => {
               <XCircle className="h-6 w-6" />
             </button>
             <h3 className="text-xl font-bold text-gray-900 mb-2">Detail Absensi</h3>
-            <div className="mb-4 text-sm text-gray-500">{formatDateTime(selectedRecord.timestamp).date} • {formatDateTime(selectedRecord.timestamp).time}</div>
+            <div className="mb-4 text-sm text-gray-500">
+              {formatDateTime(selectedRecord.timestamp).date} • {formatDateTime(selectedRecord.timestamp).time}
+            </div>
             <div className="space-y-2">
               {userRole === 'admin' && (
                 <div>
@@ -639,10 +722,14 @@ const AttendanceHistory = () => {
                 </div>
               )}
               <div>
-                <span className="font-medium text-gray-700">Jenis:</span> {selectedRecord.type === 'masuk' ? 'Masuk' : selectedRecord.type === 'keluar' ? 'Keluar' : 'Tidak Hadir'}
+                <span className="font-medium text-gray-700">Jenis:</span> {selectedRecord.type === 'masuk' ? 'Masuk' : 'Keluar'}
               </div>
               <div>
-                <span className="font-medium text-gray-700">Status:</span> <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(selectedRecord.status)}`}>{getStatusIcon(selectedRecord.status)} {getStatusText(selectedRecord.status)}</span>
+                <span className="font-medium text-gray-700">Status:</span> 
+                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ml-2 ${getStatusColor(selectedRecord.status)}`}>
+                  {getStatusIcon(selectedRecord.status)} 
+                  <span className="ml-1">{getStatusText(selectedRecord.status)}</span>
+                </span>
               </div>
               <div>
                 <span className="font-medium text-gray-700">Keterlambatan:</span> {selectedRecord.is_late ? `${selectedRecord.late_minutes} menit` : 'Tepat Waktu'}
@@ -662,20 +749,6 @@ const AttendanceHistory = () => {
           </div>
         </div>
       )}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="text-center py-12">
-              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Calendar className="h-8 w-8 text-gray-400" />
-              </div>
-              <p className="text-gray-500 text-lg mb-2">Tidak ada data absensi ditemukan</p>
-              <p className="text-gray-400">Coba sesuaikan filter atau periksa kembali nanti</p>
-            </div>
-          )}
-        </div>
-      </div>
     </div>
   );
 };

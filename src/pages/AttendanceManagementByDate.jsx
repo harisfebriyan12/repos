@@ -201,9 +201,16 @@ const AttendanceManagementByDate = () => {
       const isToday = formattedDate === now.toISOString().split('T')[0];
       const isPast = date < now;
       
-      const currentHour = now.getHours();
-      const endHour = workHoursSettings.endTime ? parseInt(workHoursSettings.endTime.split(':')[0]) : 17;
-      const shouldMarkAbsent = !isToday || (isToday && currentHour >= endHour);
+      // Parse end time from settings
+      const [endHour, endMinute] = workHoursSettings.endTime.split(':').map(Number);
+      const endTimeToday = new Date();
+      endTimeToday.setHours(endHour, endMinute, 0, 0);
+      
+      // Add 30 minutes buffer after end time before marking absent
+      const absentMarkTime = new Date(endTimeToday);
+      absentMarkTime.setMinutes(absentMarkTime.getMinutes() + 30);
+      
+      const shouldMarkAbsent = isPast || (isToday && now >= absentMarkTime);
       
       if ((isToday && shouldMarkAbsent) || isPast) {
         const absentEmployees = activeEmployees.filter(emp => 
@@ -214,14 +221,14 @@ const AttendanceManagementByDate = () => {
           id: `absent-${emp.id}-${formattedDate}`,
           user_id: emp.id,
           type: 'absent',
-          timestamp: `${formattedDate}T${workHoursSettings.endTime || '17:00'}:00`,
+          timestamp: `${formattedDate}T${absentMarkTime.toTimeString().slice(0, 8)}`,
           status: 'tidak_hadir',
           is_late: false,
           late_minutes: 0,
           work_hours: 0,
           overtime_hours: 0,
           profiles: emp,
-          notes: 'Tidak hadir - tidak melakukan absensi masuk'
+          notes: `Tidak hadir - tidak melakukan absensi masuk hingga ${absentMarkTime.toTimeString().slice(0, 5)}`
         }));
         
         setAttendanceData([...data, ...absentRecords]);
