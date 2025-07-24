@@ -45,7 +45,8 @@ const Login = () => {
       Swal.fire({ 
         icon: 'warning', 
         title: 'Form Tidak Lengkap', 
-        text: 'Silakan isi email dan password' 
+        text: 'Silakan isi email dan password',
+        confirmButtonColor: '#3b82f6'
       });
       return false;
     }
@@ -57,9 +58,10 @@ const Login = () => {
         html: `
           <div class="text-left">
             <p>Silakan verifikasi bahwa Anda bukan robot dengan mencentang reCAPTCHA</p>
-            <p class="mt-2 text-sm text-gray-600">Ini membantu kami mencegah akses tidak sah ke sistem.</p>
+            <p class="mt-2 text-sm text-gray-600">Ini membantu kami menjaga keamanan sistem.</p>
           </div>
-        ` 
+        `,
+        confirmButtonColor: '#3b82f6'
       });
       return false;
     }
@@ -70,8 +72,8 @@ const Login = () => {
   const resetFormState = () => {
     setIsLoading(false);
     setError(null);
-    recaptchaRef.current?.reset();
     setCaptchaToken(null);
+    recaptchaRef.current?.reset(); // Reset reCAPTCHA on form reset
   };
 
   const handleSubmit = async (e) => {
@@ -142,7 +144,7 @@ const Login = () => {
           console.error('Error updating last login:', updateError);
         }
 
-        // Success alert with better UX
+        // Success alert with enhanced UX
         let welcomeName = profile?.name || data.user.email || '';
         await Swal.fire({
           icon: 'success',
@@ -156,8 +158,8 @@ const Login = () => {
           showConfirmButton: false,
           timer: 2000,
           timerProgressBar: true,
-          didOpen: () => {
-            Swal.showLoading();
+          customClass: {
+            popup: 'animate__animated animate__fadeIn'
           }
         });
 
@@ -188,14 +190,17 @@ const Login = () => {
           <div class="text-left">
             <p class="font-medium">${errorMessage}</p>
             ${err.message.includes('credentials') ? (
-              '<p class="mt-2 text-sm text-gray-600">Pastikan email dan password yang Anda masukkan benar.</p>'
+              '<p class="mt-2 text-sm text-gray-600">Pastikan email dan password yang Anda masukkan benar. Silakan verifikasi ulang reCAPTCHA.</p>'
             ) : ''}
           </div>
         `,
-        confirmButtonColor: '#3b82f6'
+        confirmButtonColor: '#3b82f6',
+        customClass: {
+          popup: 'animate__animated animate__shakeX'
+        }
       });
 
-      // Reset form state on error
+      // Reset form state and reCAPTCHA on error
       resetFormState();
       setError(errorMessage);
     } finally {
@@ -215,7 +220,10 @@ const Login = () => {
       title: 'Verifikasi Kadaluarsa',
       text: 'Silakan verifikasi ulang bahwa Anda bukan robot',
       timer: 3000,
-      showConfirmButton: false
+      showConfirmButton: false,
+      customClass: {
+        popup: 'animate__animated animate__fadeIn'
+      }
     });
   };
 
@@ -225,14 +233,17 @@ const Login = () => {
       icon: 'error',
       title: 'Verifikasi Gagal',
       text: 'Terjadi kesalahan saat memverifikasi reCAPTCHA. Silakan coba lagi.',
-      confirmButtonColor: '#3b82f6'
+      confirmButtonColor: '#3b82f6',
+      customClass: {
+        popup: 'animate__animated animate__shakeX'
+      }
     });
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 flex items-center justify-center px-4 py-8 sm:px-6 lg:px-8">
       <div className="w-full max-w-sm sm:max-w-md lg:max-w-lg xl:max-w-xl">
-        {/* Logo and Header - Responsif */}
+        {/* Logo and Header */}
         <div className="text-center mb-6 sm:mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 bg-white rounded-full mb-4 sm:mb-6 shadow-lg transform transition-transform hover:scale-105">
             <Building2 className="h-8 w-8 sm:h-10 sm:w-10 text-blue-600" />
@@ -241,7 +252,7 @@ const Login = () => {
           <p className="text-sm sm:text-base text-blue-100 px-4">Masuk untuk mengakses sistem absensi</p>
         </div>
 
-        {/* Login Form - Responsif */}
+        {/* Login Form */}
         <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl p-6 sm:p-8 lg:p-10 backdrop-blur-sm transition-all hover:shadow-3xl">
           <div className="mb-6 sm:mb-8 text-center">
             <h2 className="text-xl sm:text-2xl font-bold text-gray-900 tracking-tight">Masuk ke Akun Anda</h2>
@@ -326,7 +337,7 @@ const Login = () => {
               </div>
             </div>
 
-            {/* ReCAPTCHA - Responsif */}
+            {/* ReCAPTCHA */}
             <div className="mt-4 sm:mt-6 flex justify-center">
               <div className="w-full max-w-xs sm:max-w-sm">
                 <Suspense fallback={
@@ -350,19 +361,19 @@ const Login = () => {
               </div>
             </div>
 
-            {/* Login Button - Tanpa Icon */}
+            {/* Login Button */}
             <button
               type="submit"
-              disabled={isLoading || !isSupabaseConfigured() || !captchaToken}
+              disabled={isLoading || !isSupabaseConfigured()}
               className={`w-full py-3 sm:py-4 px-4 sm:px-6 rounded-lg sm:rounded-xl font-semibold text-sm sm:text-base
                          focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-200
                          ${isLoading 
                            ? 'bg-blue-400 text-white cursor-wait transform scale-[0.98]' 
-                           : 'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800'
+                           : 'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 shadow-lg hover:shadow-xl transform hover:scale-[1.02] active:scale-[0.98]'
                          }
-                         ${(!isSupabaseConfigured() || !captchaToken) 
+                         ${!isSupabaseConfigured() 
                            ? 'opacity-70 cursor-not-allowed' 
-                           : 'shadow-lg hover:shadow-xl transform hover:scale-[1.02] active:scale-[0.98]'
+                           : ''
                          }`}
               aria-busy={isLoading}
             >
@@ -372,30 +383,16 @@ const Login = () => {
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V8H4z"></path>
                   </svg>
-                  <span>Memproses Login...</span>
+                  <span>Memproses Login</span>
                 </div>
               ) : (
-                'Masuk ke Sistem'
+                <div className="flex items-center justify-center space-x-2">
+                  <LogIn className="h-4 w-4 sm:h-5 sm:w-5" />
+                  <span>Masuk </span>
+                </div>
               )}
             </button>
-
-            {/* Additional Info */}
-            <div className="mt-4 sm:mt-6 text-center">
-              <p className="text-xs sm:text-sm text-gray-500">
-                Butuh bantuan? 
-                <a href="#" className="text-blue-600 hover:text-blue-700 font-medium ml-1 transition-colors">
-                  Hubungi Administrator
-                </a>
-              </p>
-            </div>
           </form>
-        </div>
-
-        {/* Footer */}
-        <div className="mt-6 sm:mt-8 text-center">
-          <p className="text-xs sm:text-sm text-blue-100 opacity-75">
-            © 2024 Portal Karyawan. Sistem Absensi Terintegrasi.
-          </p>
         </div>
       </div>
     </div>

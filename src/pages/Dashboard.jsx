@@ -6,7 +6,7 @@ import {
   AlertTriangle, Settings, Camera, Edit, DollarSign, 
   Bell, ChevronLeft, ChevronRight, CalendarDays, CreditCard
 } from 'lucide-react';
-import { format, isToday, isWeekend, startOfMonth, endOfMonth } from 'date-fns';
+import { format, isToday, isWeekend, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns';
 import { id } from 'date-fns/locale';
 import { supabase } from '../utils/supabaseClient';
 import AttendanceForm from '../components/AttendanceForm';
@@ -109,7 +109,7 @@ const Dashboard = () => {
     thisMonth: 0,
     onTime: 0,
     late: 0,
-    totalHours: 0,
+    absent: 0,
     expectedSalary: 0,
     currentMonthSalary: 0,
     dailySalaryEarned: 0
@@ -285,33 +285,31 @@ const Dashboard = () => {
         .order('timestamp', { ascending: false });
       if (todayError) throw todayError;
       setTodayAttendance(todayData || []);
-      await calculateStats(todayData || []);
+      await calculateStats(todayData || [], userId);
     } catch (error) {
       console.error('Error fetching attendance:', error);
     }
   }, []);
 
-  const calculateStats = useCallback(async (todayData) => {
+  const calculateStats = useCallback(async (todayData, userId) => {
     try {
       // Get monthly attendance data for proper calculation
       const thisMonth = new Date();
-      const startOfThisMonth = new Date(thisMonth.getFullYear(), thisMonth.getMonth(), 1);
-      const endOfThisMonth = new Date(thisMonth.getFullYear(), thisMonth.getMonth() + 1, 0);
+      const startOfThisMonth = startOfMonth(thisMonth);
+      const endOfThisMonth = endOfMonth(thisMonth);
       
       const { data: monthlyData, error } = await supabase
         .from('attendance')
         .select('*')
-        .eq('user_id', user?.id)
+        .eq('user_id', userId)
         .eq('status', 'berhasil')
-        .gte('timestamp', startOfThisMonth.toISOString())
-        .lte('timestamp', endOfThisMonth.toISOString());
+               .gte('timestamp', startOfThisMonth.toISOString())
+        .lte('endOfThisMonth.toISOString');
 
       if (error) throw error;
-
       const attendanceDays = new Set();
       const onTimeData = [];
       const lateData = [];
-      let totalWorkHours = 0;
 
       monthlyData?.forEach(record => {
         const recordDate = new Date(record.timestamp).toDateString();
@@ -323,10 +321,17 @@ const Dashboard = () => {
             onTimeData.push(record);
           }
         }
-        if (record.work_hours) {
-          totalWorkHours += record.work_hours;
-        }
       });
+
+      // Calculate total workdays (excluding weekends) in the current month up to today
+      const daysInMonth = eachDayOfInterval({
+        start: startOfThisMonth,
+        end: isToday(endOfThisMonth) ? new Date() : endOfThisMonth
+      });
+      const workDaysInMonth = daysInMonth.filter(day => !isWeekend(day)).length;
+
+      // Calculate absent days (workdays without attendance)
+      const absentDays = workDaysInMonth - attendanceDays.size;
 
       const workDays = attendanceDays.size;
       let expectedSalary = salaryInfo ? salaryInfo.daily_salary * 22 : profile?.salary || 0;
@@ -339,7 +344,7 @@ const Dashboard = () => {
         thisMonth: workDays,
         onTime: onTimeData.length,
         late: lateData.length,
-        totalHours: Math.round(totalWorkHours),
+        absent: absentDays,
         expectedSalary,
         currentMonthSalary,
         dailySalaryEarned: todayEarned
@@ -352,13 +357,13 @@ const Dashboard = () => {
         thisMonth: workDays,
         onTime: 0,
         late: 0,
-        totalHours: 0,
+        absent: 0,
         expectedSalary: 0,
         currentMonthSalary: 0,
         dailySalaryEarned: 0
       });
     }
-  }, [salaryInfo, profile?.salary, user?.id]);
+  }, [salaryInfo, profile?.salary]);
 
   const handleLogout = useCallback(async () => {
     try {
@@ -657,9 +662,9 @@ const Dashboard = () => {
         {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
           <StatCardMini icon={Calendar} title="Hadir" value={`${stats.thisMonth} hari`} color="blue" />
-          <StatCardMini icon={CheckCircle} title="Tepat Waktu" value={stats.onTime} color="green" />
-          <StatCardMini icon={AlertTriangle} title="Terlambat" value={stats.late} color="orange" />
-          <StatCardMini icon={DollarSign} title="Jam Kerja" value={`${stats.totalHours} jam`} color="blue" />
+          <StatCardMini icon={CheckCircle} title="Tepat Waktu" value={`${stats.onTime} hari`} color="green" />
+          <StatCardMini icon={AlertTriangle} title="Terlambat" value={`${stats.late} hari`} color="orange" />
+          <StatCardMini icon={XCircle} title="Tidak Hadir" value={`${stats.absent} hari`} color="red" />
         </div>
 
         {/* Bank Info Card */}
@@ -676,7 +681,6 @@ const Dashboard = () => {
                 </p>
               </div>
             </div>
-           
           </div>
           <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
@@ -888,7 +892,7 @@ const StatCardMini = ({ icon: Icon, title, value, color }) => {
     blue: { bg: 'bg-blue-100', text: 'text-blue-600', gradient: 'bg-gradient-to-r from-blue-500 to-indigo-600' },
     green: { bg: 'bg-green-100', text: 'text-green-600', gradient: 'bg-gradient-to-r from-green-500 to-emerald-600' },
     orange: { bg: 'bg-orange-100', text: 'text-orange-600', gradient: 'bg-gradient-to-r from-orange-500 to-amber-600' },
-    purple: { bg: 'bg-purple-100', text: 'text-purple-600', gradient: 'bg-gradient-to-r from-purple-500 to-indigo-600' },
+    red: { bg: 'bg-red-100', text: 'text-red-600', gradient: 'bg-gradient-to-r from-red-500 to-rose-600' },
   };
   const selectedColor = colors[color] || colors.blue;
 
@@ -918,12 +922,12 @@ const ProfileEditor = ({ user, profile, onClose }) => {
     location: profile?.location || '',
     bio: profile?.bio || ''
   });
-      const [bankData, setBankData] = useState({
-        bank_id: profile?.bank_id || '',
-        bank_account_number: profile?.bank_account_number || '',
-        bank_account_name: profile?.bank_account_name || profile?.full_name || ''
-      });
-      const [selectedBank, setSelectedBank] = useState(null);
+  const [bankData, setBankData] = useState({
+    bank_id: profile?.bank_id || '',
+    bank_account_number: profile?.bank_account_number || '',
+    bank_account_name: profile?.bank_account_name || profile?.full_name || ''
+  });
+  const [selectedBank, setSelectedBank] = useState(null);
   const [passwordData, setPasswordData] = useState({ newPassword: '', confirmPassword: '' });
 
   useEffect(() => {
@@ -1011,8 +1015,6 @@ const ProfileEditor = ({ user, profile, onClose }) => {
       setIsSubmitting(false);
     }
   };
-
-  // selectedBank sudah dideklarasi di atas
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
