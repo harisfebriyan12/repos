@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { 
   Plus, 
   Edit, 
-  Lock, 
+  Trash2, 
   ToggleLeft, 
   ToggleRight, 
   Search, 
@@ -33,8 +33,7 @@ const UserManagement = () => {
   const [loading, setLoading] = useState(true);
   const [contentLoading, setContentLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [modalMode, setModalMode] = useState('add'); // 'add', 'edit', or 'password'
+  const [modalMode, setModalMode] = useState('add'); // 'add', 'edit'
   const [searchTerm, setSearchTerm] = useState('');
   const [filterDepartment, setFilterDepartment] = useState('');
   const [filterRole, setFilterRole] = useState('');
@@ -97,6 +96,7 @@ const UserManagement = () => {
       await Promise.all([fetchUsers(), fetchPositions(), fetchBanks()]);
     } catch (error) {
       console.error('Error checking access:', error);
+      setError('Gagal memeriksa akses pengguna');
       navigate('/login');
     } finally {
       setLoading(false);
@@ -137,6 +137,7 @@ const UserManagement = () => {
       setPositions(data || []);
     } catch (error) {
       console.error('Error fetching positions:', error);
+      setError('Gagal memuat data jabatan');
     }
   };
 
@@ -152,6 +153,7 @@ const UserManagement = () => {
       setBanks(data || []);
     } catch (error) {
       console.error('Error fetching banks:', error);
+      setError('Gagal memuat data bank');
     }
   };
 
@@ -197,67 +199,56 @@ const UserManagement = () => {
     }
   };
 
-  const generateEmployeeId = (positionName) => {
-    const positionCode = positionName ? positionName.substring(0, 3).toUpperCase() : 'EMP';
-    const timestamp = Date.now().toString().slice(-4);
-    return `${positionCode}${timestamp}`;
-  };
-
   const handleFaceCapture = (photoBlob, fingerprint) => {
     setFacePhoto(photoBlob);
     setFaceFingerprint(fingerprint);
-    console.log('✅ Face captured', { photoBlob, fingerprint });
-  };
-
-  const handleBasicInfoSubmit = (e) => {
-    e.preventDefault();
-    if (modalMode === 'add' && formData.password.length < 6) {
-      Swal.fire({ icon: 'error', title: 'Gagal', text: 'Password minimal 6 karakter' });
-      return;
-    }
-    if (!formData.position_id) {
-      Swal.fire({ icon: 'error', title: 'Gagal', text: 'Silakan pilih jabatan' });
-      return;
-    }
-    if (formData.role === 'admin' || modalMode === 'edit') {
-      modalMode === 'add' ? handleCreateUser() : handleUpdateUser();
-    } else {
-      setStep(2);
-    }
   };
 
   const handleCreateUser = async () => {
+    if (!formData.name || !formData.email || !formData.position_id) {
+      Swal.fire({ icon: 'error', title: 'Gagal', text: 'Semua kolom wajib diisi' });
+      return;
+    }
+    if (modalMode === 'add' && formData.password.length < 8) {
+      Swal.fire({ icon: 'error', title: 'Gagal', text: 'Password minimal 8 karakter' });
+      return;
+    }
     if (formData.role !== 'admin' && !facePhoto) {
-      Swal.fire({ icon: 'error', title: 'Gagal', text: 'Silakan ambil foto wajah terlebih dahulu' });
+      Swal.fire({ icon: 'error', title: 'Gagal', text: 'Foto wajah diperlukan untuk karyawan' });
       return;
     }
     if (formData.role !== 'admin' && !faceFingerprint) {
-      Swal.fire({ icon: 'error', title: 'Gagal', text: 'Fingerprint wajah tidak terdeteksi, silakan ulangi pengambilan foto.' });
+      Swal.fire({ icon: 'error', title: 'Gagal', text: 'Fingerprint wajah tidak terdeteksi' });
       return;
     }
     setIsSubmitting(true);
     try {
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: formData.email,
-        password: formData.password,
-        options: {
-          data: {
-            name: formData.name,
-            role: formData.role
+      let userId;
+      if (modalMode === 'add') {
+        const { data: authData, error: authError } = await supabase.auth.signUp({
+          email: formData.email,
+          password: formData.password,
+          options: {
+            data: {
+              name: formData.name,
+              role: formData.role
+            }
           }
-        }
-      });
-      if (authError) throw authError;
-      if (!authData.user) {
-        throw new Error('Pendaftaran gagal');
+        });
+        if (authError) throw authError;
+        if (!authData.user) throw new Error('Pendaftaran gagal');
+        userId = authData.user.id;
+      } else {
+        userId = formData.id;
       }
-      const userId = authData.user.id;
-      let photoUrl = null;
+
+      let photoUrl = formData.avatar_url;
       if (formData.role !== 'admin' && facePhoto) {
         const fileName = `${userId}-face-${Date.now()}.jpg`;
         await uploadFile(facePhoto, 'face-photos', fileName);
         photoUrl = getFileUrl('face-photos', fileName);
       }
+
       const profileData = {
         id: userId,
         name: formData.name,
@@ -277,25 +268,20 @@ const UserManagement = () => {
         bank_account_number: formData.bank_account_number || null,
         bank_account_name: formData.bank_account_name || formData.name,
         is_face_registered: formData.role === 'admin' ? true : !!photoUrl,
-        status: 'active',
+        status: formData.status,
         join_date: new Date().toISOString().split('T')[0],
         contract_start_date: new Date().toISOString().split('T')[0],
         contract_type: 'permanent',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .insert([profileData]);
-      if (profileError) {
-        const { error: updateError } = await supabase
-          .from('profiles')
-          .update(profileData)
-          .eq('id', userId);
-        if (updateError) {
-          throw new Error('Gagal membuat profil user');
-        }
-      }
+
+      const { error: profileError } = modalMode === 'add'
+        ? await supabase.from('profiles').insert([profileData])
+        : await supabase.from('profiles').update(profileData).eq('id', userId);
+
+      if (profileError) throw profileError;
+
       const salaryData = {
         user_id: userId,
         daily_salary: formData.salary / 22,
@@ -307,131 +293,65 @@ const UserManagement = () => {
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
-      const { error: salaryError } = await supabase
-        .from('employee_salaries')
-        .insert([salaryData]);
+
+      const { error: salaryError } = modalMode === 'add'
+        ? await supabase.from('employee_salaries').insert([salaryData])
+        : await supabase.from('employee_salaries').update(salaryData).eq('user_id', userId).eq('is_active', true);
+
+      if (salaryError && !salaryError.message.includes('0 rows')) throw salaryError;
+
       Swal.fire({
         icon: 'success',
         title: 'Berhasil',
-        html: `<b>${formData.name}</b> (${getRoleDisplayName(formData.role)}) berhasil ditambahkan!`,
-        showConfirmButton: true
+        html: `<b>${formData.name}</b> (${getRoleDisplayName(formData.role)}) berhasil ${modalMode === 'add' ? 'ditambahkan' : 'diperbarui'}!`,
       });
       resetForm();
       await fetchUsers();
     } catch (err) {
-      Swal.fire({ icon: 'error', title: 'Gagal', text: err.message || 'Terjadi kesalahan saat membuat user' });
+      Swal.fire({ icon: 'error', title: 'Gagal', text: err.message || `Terjadi kesalahan saat ${modalMode === 'add' ? 'membuat' : 'memperbarui'} user` });
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleUpdateUser = async () => {
-    setIsSubmitting(true);
+  const handleDeleteUser = async (userId, userName) => {
+    const result = await Swal.fire({
+      title: 'Hapus Pengguna?',
+      text: `Apakah Anda yakin ingin menghapus ${userName}? Tindakan ini tidak dapat dibatalkan.`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#d33',
+      cancelButtonColor: '#3085d6',
+      confirmButtonText: 'Ya, Hapus',
+      cancelButtonText: 'Batal'
+    });
+
+    if (!result.isConfirmed) return;
+
+    setContentLoading(true);
     try {
-      let photoUrl = formData.avatar_url;
-      if (formData.role !== 'admin' && facePhoto) {
-        const fileName = `${formData.id}-face-${Date.now()}.jpg`;
-        await uploadFile(facePhoto, 'face-photos', fileName);
-        photoUrl = getFileUrl('face-photos', fileName);
-      }
-      const profileData = {
-        name: formData.name,
-        full_name: formData.name,
-        email: formData.email,
-        phone: formData.phone,
-        location: formData.location,
-        title: formData.title,
-        bio: formData.bio || `${getRoleDisplayName(formData.role)} di sistem absensi`,
-        avatar_url: photoUrl,
-        role: formData.role,
-        position_id: formData.position_id,
-        employee_id: formData.employee_id,
-        department: formData.department,
-        salary: formData.salary,
-        bank_id: formData.bank_id || null,
-        bank_account_number: formData.bank_account_number || null,
-        bank_account_name: formData.bank_account_name || formData.name,
-        is_face_registered: formData.role === 'admin' ? true : !!photoUrl,
-        status: formData.status,
-        updated_at: new Date().toISOString()
-      };
       const { error: profileError } = await supabase
         .from('profiles')
-        .update(profileData)
-        .eq('id', formData.id);
+        .delete()
+        .eq('id', userId);
+
       if (profileError) throw profileError;
-      const salaryData = {
-        user_id: formData.id,
-        daily_salary: formData.salary / 22,
-        overtime_rate: 1.5,
-        bonus: 0,
-        deduction: 0,
-        effective_date: new Date().toISOString().split('T')[0],
-        is_active: true,
-        updated_at: new Date().toISOString()
-      };
-      const { error: salaryError } = await supabase
+
+      await supabase
         .from('employee_salaries')
-        .update(salaryData)
-        .eq('user_id', formData.id)
-        .eq('is_active', true);
-      if (salaryError && !salaryError.message.includes('0 rows')) {
-        const { error: insertError } = await supabase
-          .from('employee_salaries')
-          .insert([salaryData]);
-        if (insertError) throw insertError;
-      }
-      Swal.fire({
-        icon: 'success',
-        title: 'Berhasil',
-        html: `<b>${formData.name}</b> berhasil diperbarui!`,
-        showConfirmButton: true
-      });
-      resetForm();
+        .delete()
+        .eq('user_id', userId);
+
       await fetchUsers();
-    } catch (err) {
-      Swal.fire({ icon: 'error', title: 'Gagal', text: err.message || 'Terjadi kesalahan saat memperbarui user' });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleResetPassword = async () => {
-    if (formData.password.length < 6) {
-      Swal.fire({ icon: 'error', title: 'Gagal', text: 'Password baru minimal 6 karakter' });
-      return;
-    }
-    setIsSubmitting(true);
-    try {
-      const response = await fetch('https://<your-project-ref>.supabase.co/functions/v1/reset-password', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabase.auth.getSession().then(({ data }) => data.session?.access_token)}`
-        },
-        body: JSON.stringify({
-          user_id: formData.id,
-          new_password: formData.password,
-          admin_id: currentUser.id
-        })
-      });
-
-      const result = await response.json();
-      if (!response.ok) {
-        throw new Error(result.error || 'Gagal mereset password');
-      }
-
       Swal.fire({
         icon: 'success',
         title: 'Berhasil',
-        text: `Password untuk ${formData.name} berhasil diperbarui!`,
-        showConfirmButton: true
+        text: `Pengguna ${userName} berhasil dihapus`
       });
-      resetForm();
-    } catch (err) {
-      Swal.fire({ icon: 'error', title: 'Gagal', text: err.message || 'Terjadi kesalahan saat mereset password' });
+    } catch (error) {
+      Swal.fire({ icon: 'error', title: 'Gagal', text: 'Gagal menghapus pengguna' });
     } finally {
-      setIsSubmitting(false);
+      setContentLoading(false);
     }
   };
 
@@ -439,8 +359,8 @@ const UserManagement = () => {
     const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
     const actionText = newStatus === 'active' ? 'mengaktifkan' : 'menonaktifkan';
     const result = await Swal.fire({
-      title: `${newStatus === 'active' ? 'Aktifkan' : 'Nonaktifkan'} User?`,
-      text: `Apakah Anda yakin ingin ${actionText} user ${userName}?`,
+      title: `${newStatus === 'active' ? 'Aktifkan' : 'Nonaktifkan'} Pengguna?`,
+      text: `Apakah Anda yakin ingin ${actionText} ${userName}?`,
       icon: 'warning',
       showCancelButton: true,
       confirmButtonColor: '#3085d6',
@@ -448,22 +368,25 @@ const UserManagement = () => {
       confirmButtonText: `Ya, ${actionText}`,
       cancelButtonText: 'Batal'
     });
+
     if (!result.isConfirmed) return;
+
     setContentLoading(true);
     try {
       const { error } = await supabase
         .from('profiles')
         .update({ status: newStatus, updated_at: new Date().toISOString() })
         .eq('id', userId);
+
       if (error) throw error;
       await fetchUsers();
       Swal.fire({
         icon: 'success',
         title: 'Berhasil',
-        text: `User ${userName} berhasil ${newStatus === 'active' ? 'diaktifkan' : 'dinonaktifkan'}`
+        text: `Pengguna ${userName} berhasil ${newStatus === 'active' ? 'diaktifkan' : 'dinonaktifkan'}`
       });
     } catch (error) {
-      Swal.fire({ icon: 'error', title: 'Gagal', text: `Gagal ${actionText} user` });
+      Swal.fire({ icon: 'error', title: 'Gagal', text: `Gagal ${actionText} pengguna` });
     } finally {
       setContentLoading(false);
     }
@@ -525,57 +448,16 @@ const UserManagement = () => {
     setShowModal(true);
   };
 
-  const handleOpenPasswordModal = (user) => {
-    setFormData({
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      password: '',
-      phone: '',
-      location: '',
-      title: '',
-      bio: '',
-      role: user.role,
-      position_id: '',
-      employee_id: '',
-      department: '',
-      salary: 0,
-      bank_id: '',
-      bank_account_number: '',
-      bank_account_name: '',
-      status: user.status
-    });
-    setModalMode('password');
-    setShowModal(true);
-  };
-
   const getRoleDisplayName = (role) => {
-    switch (role) {
-      case 'admin':
-        return 'Administrator';
-      case 'karyawan':
-        return 'Karyawan';
-      default:
-        return 'Karyawan';
-    }
+    return role === 'admin' ? 'Administrator' : 'Karyawan';
   };
 
   const getRoleIcon = (role) => {
-    switch (role) {
-      case 'admin':
-        return <Shield className="h-4 w-4" />;
-      default:
-        return <User className="h-4 w-4" />;
-    }
+    return role === 'admin' ? <Shield className="h-4 w-4" /> : <User className="h-4 w-4" />;
   };
 
   const getRoleColor = (role) => {
-    switch (role) {
-      case 'admin':
-        return 'bg-blue-100 text-blue-800';
-      default:
-        return 'bg-green-100 text-green-800';
-    }
+    return role === 'admin' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800';
   };
 
   const getStatusColor = (status) => {
@@ -583,8 +465,7 @@ const UserManagement = () => {
   };
 
   const canManageUser = (userId) => {
-    if (currentUser?.id === userId) return false;
-    return true;
+    return currentUser?.id !== userId;
   };
 
   const formatCurrency = (amount) => {
@@ -596,8 +477,7 @@ const UserManagement = () => {
   };
 
   const getDepartments = () => {
-    const departments = [...new Set(users.map(u => u.department || u.positions?.department).filter(Boolean))];
-    return departments;
+    return [...new Set(users.map(u => u.department || u.positions?.department).filter(Boolean))];
   };
 
   const filteredUsers = users.filter(user => {
@@ -614,218 +494,207 @@ const UserManagement = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
         <div className="text-center">
-          <div className="inline-flex space-x-1 text-blue-600">
-            <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-            <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-            <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+          <div className="inline-flex space-x-2 text-blue-600">
+            <div className="w-3 h-3 bg-current rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+            <div className="w-3 h-3 bg-current rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+            <div className="w-3 h-3 bg-current rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
           </div>
-          <p className="text-gray-600 mt-4">Memuat data pengguna...</p>
+          <p className="text-gray-600 mt-4 text-lg">Memuat...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col md:flex-row">
-      <AdminSidebar user={currentUser} profile={profile} className="w-full md:w-64 md:fixed md:h-screen" />
+    <div className="min-h-screen bg-gray-100 flex">
+      <AdminSidebar user={currentUser} profile={profile} className="w-64 fixed h-screen hidden lg:block" />
 
-      <div className="flex-1 md:ml-64 transition-all duration-300 ease-in-out">
-        <div className="bg-white shadow-sm border-b">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between py-4 gap-4">
+      <div className="flex-1 lg:ml-64 transition-all duration-300">
+        <div className="bg-white shadow-md border-b">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <div>
-                <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Kelola Pengguna</h1>
-                <p className="text-sm text-gray-600">Tambah, edit, reset password, dan kelola status pengguna sistem</p>
+                <h1 className="text-2xl font-bold text-gray-900">Manajemen Pengguna</h1>
+                <p className="text-sm text-gray-600 mt-1">Kelola data pengguna sistem dengan mudah dan aman</p>
               </div>
               <button
                 onClick={() => { setModalMode('add'); setShowModal(true); }}
-                className="flex items-center justify-center space-x-2 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors w-full sm:w-auto"
+                className="flex items-center justify-center space-x-2 px-5 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
                 <Plus className="h-5 w-5" />
-                <span>Tambah User</span>
+                <span>Tambah Pengguna</span>
               </button>
             </div>
           </div>
         </div>
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {success && (
-            <div className="mb-6 p-4 bg-green-50 rounded-lg flex items-start space-x-3">
-              <CheckCircle className="h-5 w-5 text-green-500 flex-shrink-0 mt-0.5" />
-              <p className="text-green-700">{success}</p>
+            <div className="mb-6 p-4 bg-green-50 rounded-lg flex items-center space-x-3 animate-fade-in">
+              <CheckCircle className="h-5 w-5 text-green-500" />
+              <p className="text-green-700 flex-1">{success}</p>
               <button 
                 onClick={() => setSuccess(null)}
-                className="ml-auto text-green-500 hover:text-green-700"
+                className="text-green-500 hover:text-green-700"
               >
-                <XCircle className="h-4 w-4" />
+                <XCircle className="h-5 w-5" />
               </button>
             </div>
           )}
 
           {error && (
-            <div className="mb-6 p-4 bg-red-50 rounded-lg flex items-start space-x-3">
-              <AlertTriangle className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
-              <p className="text-red-700">{error}</p>
+            <div className="mb-6 p-4 bg-red-50 rounded-lg flex items-center space-x-3 animate-fade-in">
+              <AlertTriangle className="h-5 w-5 text-red-500" />
+              <p className="text-red-700 flex-1">{error}</p>
               <button 
                 onClick={() => setError(null)}
-                className="ml-auto text-red-500 hover:text-red-700"
+                className="text-red-500 hover:text-red-700"
               >
-                <XCircle className="h-4 w-4" />
+                <XCircle className="h-5 w-5" />
               </button>
             </div>
           )}
 
-          <div className="bg-white rounded-lg shadow-md mb-6">
-            <div className="p-4">
+          <div className="bg-white rounded-xl shadow-md mb-6 p-6">
+            <div className="flex flex-col lg:flex-row gap-4">
+              <div className="flex-1">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Cari nama, email, atau ID karyawan..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition-all"
+                  />
+                </div>
+              </div>
               <div className="flex flex-col sm:flex-row gap-4">
-                <div className="flex-1">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-                    <input
-                      type="text"
-                      placeholder="Cari berdasarkan nama, email, atau ID karyawan..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                    />
-                  </div>
-                </div>
-                <div className="flex flex-col sm:flex-row gap-4">
-                  <div className="w-full sm:w-40">
-                    <select
-                      value={filterDepartment}
-                      onChange={(e) => setFilterDepartment(e.target.value)}
-                      className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                    >
-                      <option value="">Semua Departemen</option>
-                      {getDepartments().map(dept => (
-                        <option key={dept} value={dept}>{dept}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="w-full sm:w-40">
-                    <select
-                      value={filterRole}
-                      onChange={(e) => setFilterRole(e.target.value)}
-                      className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                    >
-                      <option value="">Semua Role</option>
-                      <option value="karyawan">Karyawan</option>
-                      <option value="admin">Administrator</option>
-                    </select>
-                  </div>
-                </div>
+                <select
+                  value={filterDepartment}
+                  onChange={(e) => setFilterDepartment(e.target.value)}
+                  className="px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                >
+                  <option value="">Semua Departemen</option>
+                  {getDepartments().map(dept => (
+                    <option key={dept} value={dept}>{dept}</option>
+                  ))}
+                </select>
+                <select
+                  value={filterRole}
+                  onChange={(e) => setFilterRole(e.target.value)}
+                  className="px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                >
+                  <option value="">Semua Role</option>
+                  <option value="karyawan">Karyawan</option>
+                  <option value="admin">Administrator</option>
+                </select>
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-lg shadow-md overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-200">
+          <div className="bg-white rounded-xl shadow-md overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200">
               <div className="flex items-center space-x-2">
                 <Users className="h-5 w-5 text-blue-600" />
-                <h2 className="text-base font-medium text-gray-900">
+                <h2 className="text-lg font-semibold text-gray-900">
                   Daftar Pengguna ({filteredUsers.length})
                 </h2>
               </div>
             </div>
 
             {contentLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="inline-flex space-x-1 text-blue-600">
-                  <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                  <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                  <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+              <div className="flex items-center justify-center py-16">
+                <div className="inline-flex space-x-2 text-blue-600">
+                  <div className="w-3 h-3 bg-current rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                  <div className="w-3 h-3 bg-current rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                  <div className="w-3 h-3 bg-current rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
                 </div>
               </div>
             ) : filteredUsers.length === 0 ? (
-              <div className="text-center py-12">
+              <div className="text-center py-16">
                 <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                   <User className="h-8 w-8 text-gray-400" />
                 </div>
-                <p className="text-gray-500 text-lg mb-2">Tidak ada pengguna ditemukan</p>
-                <p className="text-gray-400">Coba sesuaikan pencarian atau filter Anda</p>
+                <p className="text-gray-600 text-lg font-medium mb-2">Tidak ada pengguna ditemukan</p>
+                <p className="text-gray-500">Sesuaikan pencarian atau filter untuk menemukan pengguna</p>
               </div>
             ) : (
               <>
-                <table className="min-w-full divide-y divide-gray-200 hidden md:table">
+                <table className="min-w-full divide-y divide-gray-200 hidden lg:table">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Pengguna
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Jabatan & Departemen
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Gaji
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Kontak
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Role & Status
+                      <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Status
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Aksi
                       </th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {filteredUsers.map((user) => (
-                      <tr key={user.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 whitespace-nowrap">
+                      <tr key={user.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center space-x-3">
-                            <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center">
+                            <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center">
                               {user.avatar_url ? (
                                 <img 
                                   src={user.avatar_url} 
                                   alt={user.name}
-                                  className="w-8 h-8 rounded-full object-cover"
+                                  className="w-10 h-10 rounded-full object-cover"
                                 />
                               ) : (
-                                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${getRoleColor(user.role)}`}>
+                                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${getRoleColor(user.role)}`}>
                                   {getRoleIcon(user.role)}
                                 </div>
                               )}
                             </div>
                             <div>
-                              <div className="text-sm font-medium text-gray-900">
-                                <span 
-                                  className="cursor-pointer text-blue-700 hover:underline" 
-                                  onClick={() => { setProfile(user); setShowProfileModal(true); }}
-                                >
-                                  {user.name}
-                                </span>
+                              <div 
+                                className="text-sm font-medium text-blue-600 cursor-pointer hover:underline"
+                                onClick={() => { setProfile(user); setShowProfileModal(true); }}
+                              >
+                                {user.name}
                               </div>
                               <div className="text-sm text-gray-500">
-                                ID: {user.employee_id || 'Belum diatur'}
+                                ID: {user.employee_id || 'N/A'}
                               </div>
                             </div>
                           </div>
                         </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
+                        <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm font-medium text-gray-900">
                             {user.positions?.name_id || user.title || getRoleDisplayName(user.role)}
                           </div>
                           <div className="text-sm text-gray-500">
-                            {user.positions?.department || user.department || 'Belum diatur'}
+                            {user.positions?.department || user.department || 'N/A'}
                           </div>
                         </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
+                        <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm font-medium text-gray-900">
                             {formatCurrency(user.positions?.base_salary || user.salary || 0)}
                           </div>
-                          <div className="text-sm text-gray-500">
-                            per bulan
-                          </div>
                         </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
+                        <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-gray-900 flex items-center">
                             <Mail className="h-4 w-4 mr-2 text-gray-400" />
                             <span 
-                              className="cursor-pointer text-blue-700 hover:underline" 
+                              className="cursor-pointer text-blue-600 hover:underline"
                               onClick={() => { setProfile(user); setShowProfileModal(true); }}
                             >
                               {user.email}
@@ -838,52 +707,45 @@ const UserManagement = () => {
                             </div>
                           )}
                         </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <div className="space-y-1">
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getRoleColor(user.role)}`}>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="space-y-2">
+                            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${getRoleColor(user.role)}`}>
                               {user.role === 'admin' && <Shield className="h-3 w-3 mr-1" />}
                               {getRoleDisplayName(user.role)}
                             </span>
-                            <div className="text-xs text-gray-500">
-                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(user.status)}`}>
-                                {user.status === 'active' ? 'Aktif' : 'Nonaktif'}
-                              </span>
-                            </div>
-                            {user.bank_info && (
-                              <div className="text-xs text-gray-500">
-                                <span className="text-blue-600">Bank: {user.bank_info.bank_name}</span>
-                              </div>
-                            )}
+                            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(user.status)}`}>
+                              {user.status === 'active' ? 'Aktif' : 'Nonaktif'}
+                            </span>
                           </div>
                         </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-sm font-medium">
-                          <div className="flex space-x-2">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                          <div className="flex space-x-3">
                             {canManageUser(user.id) ? (
                               <>
                                 <button
                                   onClick={() => handleEditUser(user)}
-                                  className="text-blue-600 hover:text-blue-900 p-1 hover:bg-blue-50 rounded"
-                                  title="Edit User"
+                                  className="text-blue-600 hover:text-blue-800 p-2 rounded-full hover:bg-blue-50 transition-colors"
+                                  title="Edit Pengguna"
                                 >
-                                  <Edit className="h-4 w-4" />
+                                  <Edit className="h-5 w-5" />
                                 </button>
                                 <button
-                                  onClick={() => handleOpenPasswordModal(user)}
-                                  className="text-yellow-600 hover:text-yellow-900 p-1 hover:bg-yellow-50 rounded"
-                                  title="Reset Password"
+                                  onClick={() => handleDeleteUser(user.id, user.name)}
+                                  className="text-red-600 hover:text-red-800 p-2 rounded-full hover:bg-red-50 transition-colors"
+                                  title="Hapus Pengguna"
                                 >
-                                  <Lock className="h-4 w-4" />
+                                  <Trash2 className="h-5 w-5" />
                                 </button>
                                 <button
                                   onClick={() => handleToggleStatus(user.id, user.status, user.name)}
-                                  className="text-purple-600 hover:text-purple-900 p-1 hover:bg-purple-50 rounded"
+                                  className="text-purple-600 hover:text-purple-800 p-2 rounded-full hover:bg-purple-50 transition-colors"
                                   title={user.status === 'active' ? 'Nonaktifkan' : 'Aktifkan'}
                                 >
-                                  {user.status === 'active' ? <ToggleRight className="h-4 w-4" /> : <ToggleLeft className="h-4 w-4" />}
+                                  {user.status === 'active' ? <ToggleRight className="h-5 w-5" /> : <ToggleLeft className="h-5 w-5" />}
                                 </button>
                               </>
                             ) : (
-                              <span className="text-gray-400 text-xs">Akun Anda</span>
+                              <span className="text-gray-400 text-sm">Akun Anda</span>
                             )}
                           </div>
                         </td>
@@ -892,11 +754,11 @@ const UserManagement = () => {
                   </tbody>
                 </table>
 
-                <div className="md:hidden p-4 space-y-4">
+                <div className="lg:hidden p-6 space-y-6">
                   {filteredUsers.map((user) => (
-                    <div key={user.id} className="bg-white rounded-lg shadow-md p-5 border border-gray-100 transition-transform transform hover:scale-[1.02]">
+                    <div key={user.id} className="bg-white rounded-xl shadow-md p-6 border border-gray-100 transition-transform hover:scale-[1.01]">
                       <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center space-x-3">
+                        <div className="flex items-center space-x-4">
                           <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center">
                             {user.avatar_url ? (
                               <img 
@@ -912,7 +774,7 @@ const UserManagement = () => {
                           </div>
                           <div>
                             <p 
-                              className="text-base font-semibold text-gray-900 cursor-pointer text-blue-700 hover:underline"
+                              className="text-base font-semibold text-blue-600 cursor-pointer hover:underline"
                               onClick={() => { setProfile(user); setShowProfileModal(true); }}
                             >
                               {user.name}
@@ -922,24 +784,24 @@ const UserManagement = () => {
                             </p>
                           </div>
                         </div>
-                        <div className="flex space-x-2">
+                        <div className="flex space-x-3">
                           {canManageUser(user.id) ? (
                             <>
                               <button
                                 onClick={() => handleEditUser(user)}
-                                className="text-blue-600 hover:text-blue-900 p-2 rounded-full hover:bg-blue-50"
+                                className="text-blue-600 hover:text-blue-800 p-2 rounded-full hover:bg-blue-50"
                               >
                                 <Edit className="h-6 w-6" />
                               </button>
                               <button
-                                onClick={() => handleOpenPasswordModal(user)}
-                                className="text-yellow-600 hover:text-yellow-900 p-2 rounded-full hover:bg-yellow-50"
+                                onClick={() => handleDeleteUser(user.id, user.name)}
+                                className="text-red-600 hover:text-red-800 p-2 rounded-full hover:bg-red-50"
                               >
-                                <Lock className="h-6 w-6" />
+                                <Trash2 className="h-6 w-6" />
                               </button>
                               <button
                                 onClick={() => handleToggleStatus(user.id, user.status, user.name)}
-                                className="text-purple-600 hover:text-purple-900 p-2 rounded-full hover:bg-purple-50"
+                                className="text-purple-600 hover:text-purple-800 p-2 rounded-full hover:bg-purple-50"
                               >
                                 {user.status === 'active' ? <ToggleRight className="h-6 w-6" /> : <ToggleLeft className="h-6 w-6" />}
                               </button>
@@ -949,9 +811,9 @@ const UserManagement = () => {
                           )}
                         </div>
                       </div>
-                      <div className="text-sm text-gray-700 space-y-2">
-                        <p><span className="font-medium">ID:</span> {user.employee_id || 'Belum diatur'}</p>
-                        <p><span className="font-medium">Departemen:</span> {user.positions?.department || user.department || 'Belum diatur'}</p>
+                      <div className="text-sm text-gray-700 space-y-3">
+                        <p><span className="font-medium">ID:</span> {user.employee_id || 'N/A'}</p>
+                        <p><span className="font-medium">Departemen:</span> {user.positions?.department || user.department || 'N/A'}</p>
                         <p><span className="font-medium">Gaji:</span> {formatCurrency(user.positions?.base_salary || user.salary || 0)}</p>
                         <p><span className="font-medium">Email:</span> {user.email}</p>
                         {user.phone && <p><span className="font-medium">Telepon:</span> {user.phone}</p>}
@@ -984,34 +846,34 @@ const UserManagement = () => {
       </div>
 
       {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="w-full max-w-md sm:max-w-lg bg-white rounded-xl shadow-2xl max-h-[90vh] overflow-y-auto">
-            <div className="p-5 sm:p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg sm:text-xl font-semibold text-gray-900">
-                  {modalMode === 'add' ? 'Tambah Pengguna Baru' : modalMode === 'edit' ? 'Edit Pengguna' : 'Reset Password'}
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
+          <div className="w-full max-w-2xl bg-white rounded-2xl shadow-xl max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-semibold text-gray-900">
+                  {modalMode === 'add' ? 'Tambah Pengguna Baru' : 'Edit Pengguna'}
                 </h2>
                 <button
                   onClick={resetForm}
-                  className="text-gray-400 hover:text-gray-600 p-2 rounded-full hover:bg-gray-100"
+                  className="text-gray-500 hover:text-gray-700 p-2 rounded-full hover:bg-gray-100"
                 >
                   <X className="h-6 w-6" />
                 </button>
               </div>
 
               {modalMode !== 'password' && (
-                <div className="flex items-center justify-center mb-4">
+                <div className="flex items-center justify-center mb-6">
                   {[1, 2].map((stepNum) => (
                     <div key={stepNum} className="flex items-center">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium ${
                         step >= stepNum
                           ? 'bg-blue-600 text-white'
                           : 'bg-gray-200 text-gray-600'
                       }`}>
-                        {step > stepNum ? <CheckCircle className="h-5 w-5" /> : stepNum}
+                        {step > stepNum ? <CheckCircle className="h-6 w-6" /> : stepNum}
                       </div>
                       {stepNum < 2 && (
-                        <div className={`w-10 h-1 mx-2 ${
+                        <div className={`w-12 h-1 mx-3 ${
                           step > stepNum ? 'bg-blue-600' : 'bg-gray-200'
                         }`} />
                       )}
@@ -1020,103 +882,53 @@ const UserManagement = () => {
                 </div>
               )}
 
-              {modalMode === 'password' ? (
-                <form onSubmit={(e) => { e.preventDefault(); handleResetPassword(); }} className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Nama Pengguna
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.name}
-                      readOnly
-                      className="w-full px-3 py-3 border border-gray-300 rounded-lg bg-gray-50 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Password Baru *
-                    </label>
-                    <input
-                      type="password"
-                      name="password"
-                      value={formData.password}
-                      onChange={handleInputChange}
-                      required
-                      className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                      placeholder="Minimal 6 karakter"
-                    />
-                  </div>
-                  <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3 pt-4">
-                    <button
-                      type="button"
-                      onClick={resetForm}
-                      className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
-                    >
-                      Batal
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={isSubmitting}
-                      className="flex-1 bg-blue-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
-                    >
-                      <div className="flex items-center justify-center space-x-2">
-                        <Lock className="h-5 w-5" />
-                        <span>Reset Password</span>
+              {step === 1 ? (
+                <form onSubmit={(e) => { e.preventDefault(); formData.role === 'admin' ? handleCreateUser() : setStep(2); }} className="space-y-6">
+                  <div className="bg-blue-50 p-5 rounded-lg">
+                    <h3 className="font-medium text-blue-900 mb-4">Informasi Jabatan</h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Jabatan *
+                        </label>
+                        <select
+                          name="position_id"
+                          value={formData.position_id}
+                          onChange={handleInputChange}
+                          required
+                          className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                        >
+                          <option value="">Pilih Jabatan...</option>
+                          {positions.map(position => (
+                            <option key={position.id} value={position.id}>
+                              {position.name_id} - {position.department} ({formatCurrency(position.base_salary || 0)})
+                            </option>
+                          ))}
+                        </select>
                       </div>
-                    </button>
-                  </div>
-                </form>
-              ) : step === 1 ? (
-                <form onSubmit={handleBasicInfoSubmit} className="space-y-4">
-                  <div className="bg-blue-50 p-4 rounded-lg">
-                    <h3 className="font-medium text-blue-900 mb-3">Pilih Jabatan</h3>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Jabatan *
-                      </label>
-                      <select
-                        name="position_id"
-                        value={formData.position_id}
-                        onChange={handleInputChange}
-                        required
-                        className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                      >
-                        <option value="">Pilih Jabatan...</option>
-                        {positions.map(position => (
-                          <option key={position.id} value={position.id}>
-                            {position.name_id} - {position.department} ({formatCurrency(position.base_salary || 0)})
-                          </option>
-                        ))}
-                      </select>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          ID Karyawan
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.employee_id}
+                          readOnly
+                          className="w-full px-4 py-3 border border-gray-200 rounded-lg bg-gray-50 text-sm"
+                        />
+                      </div>
                     </div>
-
-                    {formData.position_id && (
-                      <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            ID Karyawan
-                          </label>
-                          <input
-                            type="text"
-                            value={formData.employee_id}
-                            readOnly
-                            className="w-full px-3 py-3 border border-gray-300 rounded-lg bg-gray-50 text-sm"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Gaji Bulanan
-                          </label>
-                          <input
-                            type="text"
-                            value={formatCurrency(formData.salary)}
-                            readOnly
-                            className="w-full px-3 py-3 border border-gray-300 rounded-lg bg-gray-50 text-sm"
-                          />
-                        </div>
-                      </div>
-                    )}
+                    <div className="mt-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Gaji Bulanan
+                      </label>
+                      <input
+                        type="text"
+                        value={formatCurrency(formData.salary)}
+                        readOnly
+                        className="w-full px-4 py-3 border border-gray-200 rounded-lg bg-gray-50 text-sm"
+                      />
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1130,7 +942,7 @@ const UserManagement = () => {
                         value={formData.name}
                         onChange={handleInputChange}
                         required
-                        className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                        className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                         placeholder="Masukkan nama lengkap"
                       />
                     </div>
@@ -1144,7 +956,7 @@ const UserManagement = () => {
                         value={formData.email}
                         onChange={handleInputChange}
                         required
-                        className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                        className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                         placeholder="Masukkan email"
                       />
                     </div>
@@ -1162,8 +974,8 @@ const UserManagement = () => {
                           value={formData.password}
                           onChange={handleInputChange}
                           required
-                          className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                          placeholder="Minimal 6 karakter"
+                          className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                          placeholder="Minimal 8 karakter"
                         />
                       </div>
                       <div>
@@ -1174,7 +986,7 @@ const UserManagement = () => {
                           name="role"
                           value={formData.role}
                           onChange={handleInputChange}
-                          className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                          className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                         >
                           <option value="karyawan">Karyawan</option>
                           <option value="admin">Administrator</option>
@@ -1193,8 +1005,8 @@ const UserManagement = () => {
                         name="phone"
                         value={formData.phone}
                         onChange={handleInputChange}
-                        className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                        placeholder="Contoh: +62-21-1234567"
+                        className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                        placeholder="+62-21-1234567"
                       />
                     </div>
                     <div>
@@ -1206,24 +1018,24 @@ const UserManagement = () => {
                         name="location"
                         value={formData.location}
                         onChange={handleInputChange}
-                        className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                        placeholder="Contoh: Jakarta, Indonesia"
+                        className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                        placeholder="Jakarta, Indonesia"
                       />
                     </div>
                   </div>
 
-                  <div className="bg-green-50 p-4 rounded-lg">
-                    <h3 className="font-medium text-green-900 mb-3">Informasi Bank (Opsional)</h3>
+                  <div className="bg-green-50 p-5 rounded-lg">
+                    <h3 className="font-medium text-green-900 mb-4">Informasi Bank</h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Pilih Bank
+                          Bank
                         </label>
                         <select
                           name="bank_id"
                           value={formData.bank_id}
                           onChange={handleInputChange}
-                          className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                          className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                         >
                           <option value="">Pilih Bank...</option>
                           {banks.map(bank => (
@@ -1242,7 +1054,7 @@ const UserManagement = () => {
                           name="bank_account_number"
                           value={formData.bank_account_number}
                           onChange={handleInputChange}
-                          className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                          className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                           placeholder="Nomor rekening"
                         />
                       </div>
@@ -1255,8 +1067,7 @@ const UserManagement = () => {
                         type="text"
                         value={formData.bank_account_name}
                         readOnly
-                        className="w-full px-3 py-3 border border-gray-300 rounded-lg bg-gray-50 text-sm"
-                        placeholder="Otomatis sesuai nama lengkap"
+                        className="w-full px-4 py-3 border border-gray-200 rounded-lg bg-gray-50 text-sm"
                       />
                     </div>
                   </div>
@@ -1270,7 +1081,7 @@ const UserManagement = () => {
                       value={formData.bio}
                       onChange={handleInputChange}
                       rows={4}
-                      className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                      className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                       placeholder="Deskripsi singkat tentang pengguna"
                     />
                   </div>
@@ -1284,7 +1095,7 @@ const UserManagement = () => {
                         name="status"
                         value={formData.status}
                         onChange={handleInputChange}
-                        className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                        className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                       >
                         <option value="active">Aktif</option>
                         <option value="inactive">Nonaktif</option>
@@ -1299,18 +1110,18 @@ const UserManagement = () => {
                         <div>
                           <p className="text-blue-800 font-medium">Administrator</p>
                           <p className="text-blue-700 text-sm mt-1">
-                            Administrator tidak memerlukan verifikasi wajah dan dapat langsung mengakses semua fitur sistem.
+                            Administrator memiliki akses penuh ke sistem tanpa memerlukan verifikasi wajah.
                           </p>
                         </div>
                       </div>
                     </div>
                   )}
 
-                  <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3 pt-4">
+                  <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-4 pt-4">
                     <button
                       type="button"
                       onClick={resetForm}
-                      className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
+                      className="flex-1 px-4 py-3 border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
                     >
                       Batal
                     </button>
@@ -1321,49 +1132,49 @@ const UserManagement = () => {
                     >
                       <div className="flex items-center justify-center space-x-2">
                         <Save className="h-5 w-5" />
-                        <span>{modalMode === 'add' && formData.role === 'admin' ? 'Buat Administrator' : modalMode === 'add' ? 'Lanjut ke Foto Wajah' : 'Perbarui Pengguna'}</span>
+                        <span>{formData.role === 'admin' ? 'Simpan Administrator' : 'Lanjut ke Verifikasi Wajah'}</span>
                       </div>
                     </button>
                   </div>
                 </form>
               ) : (
-                <div className="space-y-4">
-                  <div className="text-center mb-4">
-                    <Camera className="h-12 w-12 text-blue-600 mx-auto mb-2" />
-                    <p className="text-gray-600 text-sm">
-                      Ambil foto wajah yang jelas untuk verifikasi absensi. 
-                      Sistem kami menggunakan teknologi pengenalan wajah yang aman dan cepat.
+                <div className="space-y-6">
+                  <div className="text-center">
+                    <Camera className="h-12 w-12 text-blue-600 mx-auto mb-3" />
+                    <h3 className="text-lg font-medium text-gray-900">Verifikasi Wajah</h3>
+                    <p className="text-gray-600 text-sm mt-2">
+                      Ambil foto wajah yang jelas untuk keperluan absensi. Pastikan pencahayaan cukup dan wajah terlihat jelas.
                     </p>
                   </div>
 
                   <CustomFaceCapture onFaceCapture={handleFaceCapture} isCapturing={isSubmitting} />
 
                   {facePhoto && faceFingerprint && (
-                    <div className="text-center">
-                      <div className="inline-flex items-center space-x-2 text-green-600 mb-4">
+                    <div className="text-center bg-green-50 p-4 rounded-lg">
+                      <div className="inline-flex items-center space-x-2 text-green-600">
                         <CheckCircle className="h-5 w-5" />
-                        <span>Foto wajah berhasil diambil dan diverifikasi!</span>
+                        <span>Foto wajah berhasil diverifikasi!</span>
                       </div>
                     </div>
                   )}
                   {facePhoto && !faceFingerprint && (
-                    <div className="text-center">
-                      <div className="inline-flex items-center space-x-2 text-yellow-600 mb-4">
+                    <div className="text-center bg-yellow-50 p-4 rounded-lg">
+                      <div className="inline-flex items-center space-x-2 text-yellow-600">
                         <AlertTriangle className="h-5 w-5" />
-                        <span>Fingerprint wajah tidak terdeteksi, silakan ulangi pengambilan foto.</span>
+                        <span>Fingerprint wajah tidak terdeteksi. Silakan ulangi.</span>
                       </div>
                     </div>
                   )}
 
-                  <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3">
+                  <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-4">
                     <button
                       onClick={() => setStep(1)}
-                      className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
+                      className="flex-1 px-4 py-3 border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
                     >
                       Kembali
                     </button>
                     <button
-                      onClick={modalMode === 'add' ? handleCreateUser : handleUpdateUser}
+                      onClick={handleCreateUser}
                       disabled={!facePhoto || !faceFingerprint || isSubmitting}
                       className="flex-1 bg-blue-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
                     >

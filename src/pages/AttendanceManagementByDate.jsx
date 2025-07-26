@@ -380,10 +380,10 @@ const AttendanceManagementByDate = () => {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="inline-flex space-x-2 text-blue-600">
-            <div className="w-3 h-3 bg-current rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-            <div className="w-3 h-3 bg-current rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-            <div className="w-3 h-3 bg-current rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+          <div className="inline-flex space-x-1 text-blue-600">
+            <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+            <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+            <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
           </div>
           <p className="text-gray-600 mt-4 text-base">Memuat data absensi...</p>
         </div>
@@ -414,13 +414,6 @@ const AttendanceManagementByDate = () => {
                 
                 {/* Action buttons */}
                 <div className="flex flex-wrap items-center gap-3">
-                  <button
-                    onClick={() => setShowWorkHoursSettings(true)}
-                    className="flex items-center justify-center space-x-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm min-w-[48px] h-12"
-                  >
-                    <Settings className="h-5 w-5" />
-                    <span className="hidden sm:inline">Jam Kerja</span>
-                  </button>
                   <button
                     onClick={() => {
                       setContentLoading(true);
@@ -537,6 +530,7 @@ const AttendanceManagementByDate = () => {
 
                 {showFilters && (
                   <div className="grid grid-cols-1 gap-4 pt-3">
+
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Departemen</label>
                       <select

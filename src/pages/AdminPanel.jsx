@@ -24,9 +24,22 @@ import {
 } from 'lucide-react';
 import { supabase } from '../utils/supabaseClient';
 import Swal from 'sweetalert2';
-import NotificationSystem from '../components/NotificationSystem';
-import WarningLetterGenerator from '../components/WarningLetterGenerator';
+import { Bar, Pie } from 'react-chartjs-2';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  ArcElement,
+  Title,
+  Tooltip,
+  Legend,
+} from 'chart.js';
 import AdminSidebar from '../components/AdminSidebar';
+import WarningLetterGenerator from '../components/WarningLetterGenerator';
+import NotificationSystem from '../components/NotificationSystem';
+
+ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, Title, Tooltip, Legend);
 
 const AdminPanel = () => {
   const navigate = useNavigate();
@@ -381,23 +394,43 @@ const AdminPanel = () => {
     }).format(amount);
   };
 
+  // Chart data
+  const attendanceChartData = {
+    labels: ['Hadir', 'Terlambat', 'Tidak Hadir'],
+    datasets: [{
+      label: 'Statistik Absensi Hari Ini',
+      data: [stats.todayAttendance, stats.lateEmployees, stats.absentToday],
+      backgroundColor: ['#10B981', '#F59E0B', '#EF4444'],
+      borderColor: ['#059669', '#D97706', '#DC2626'],
+      borderWidth: 1
+    }]
+  };
+
+  const departmentChartData = {
+    labels: ['Karyawan Aktif', 'Departemen', 'Posisi'],
+    datasets: [{
+      data: [stats.activeUsers, stats.activeDepartments, stats.totalPositions],
+      backgroundColor: ['#3B82F6', '#8B5CF6', '#EC4899'],
+    }]
+  };
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
         <div className="text-center">
           <div className="inline-flex space-x-1 text-blue-600">
             <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
             <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
             <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
           </div>
-          <p className="text-gray-600 mt-4">Memuat dashboard admin...</p>
+          <p className="text-gray-600 mt-4 font-medium">Memuat dashboard admin...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex font-sans">
       {/* Sidebar */}
       <AdminSidebar 
         user={user} 
@@ -409,56 +442,36 @@ const AdminPanel = () => {
       {/* Main Content */}
       <div 
         className={`flex-1 transition-all duration-300 ease-in-out 
-          ${isCollapsed ? 'lg:ml-16' : 'lg:ml-64'} 
+          ${isCollapsed ? 'lg:ml-20' : 'lg:ml-64'} 
           pt-16 lg:pt-0`}
       >
         {/* Header */}
-        <div className="bg-white shadow-sm border-b fixed top-0 left-0 right-0 lg:relative z-30">
+        <div className="bg-white shadow-lg border-b fixed top-0 left-0 right-0 lg:relative z-30">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center justify-between py-3 lg:py-4">
-              <div className="lg:hidden">
-                {/* Placeholder for mobile menu button alignment */}
-              </div>
+            <div className="flex items-center justify-between py-4 lg:py-5">
               <div>
-                <h1 className="text-xl lg:text-2xl font-bold text-gray-900">Dashboard Admin</h1>
-                <p className="hidden md:block text-sm text-gray-600">
-                  Ringkasan aktivitas dan statistik sistem
+                <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900">Dashboard Admin</h1>
+                <p className="hidden sm:block text-sm text-gray-600 mt-1">
+                  Pantau aktivitas dan kelola sistem dengan mudah
                 </p>
-              </div>
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => setShowSettingsModal(true)}
-                  className="p-2 lg:px-3 lg:py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors duration-200"
-                >
-                  <Settings className="h-4 w-4" />
-                  <span className="hidden lg:inline ml-2">Pengaturan</span>
-                </button>
-                <button
-                  onClick={() => setShowExportModal(true)}
-                  className="p-2 lg:px-3 lg:py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200"
-                >
-                  <Download className="h-4 w-4" />
-                  <span className="hidden lg:inline ml-2">Export</span>
-                </button>
-                <NotificationSystem userId={user?.id} userRole={profile?.role} />
               </div>
             </div>
           </div>
         </div>
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {/* Stats Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mb-8">
+          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
             <StatCard
               icon={Users}
-              title="Karyawan"
+              title="Total Karyawan"
               value={stats.totalUsers}
               footer={`${stats.activeUsers} aktif`}
               color="blue"
             />
             <StatCard
               icon={CheckCircle}
-              title="Hadir"
+              title="Hadir Hari Ini"
               value={stats.todayAttendance}
               footer={`${stats.absentToday} absen`}
               color="green"
@@ -470,62 +483,88 @@ const AdminPanel = () => {
               footer="Hari ini"
               color="orange"
             />
-            <StatCard
-              icon={Bell}
-              title="Peringatan"
-              value={stats.activeWarnings}
-              footer="Aktif"
-              color="red"
-            />
           </div>
 
+          {/* Charts */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            <div className="bg-white rounded-2xl shadow-lg p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">Statistik Absensi</h2>
+              <div className="h-64">
+                <Bar
+                  data={attendanceChartData}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                      legend: { position: 'top' },
+                      title: { display: true, text: 'Statistik Absensi Harian' }
+                    }
+                  }}
+                />
+              </div>
+            </div>
+            <div className="bg-white rounded-2xl shadow-lg p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">Distribusi Organisasi</h2>
+              <div className="h-64">
+                <Pie
+                  data={departmentChartData}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                      legend: { position: 'top' },
+                      title: { display: true, text: 'Struktur Organisasi' }
+                    }
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Employee Status */}
           {(lateEmployees.length > 0 || absentEmployees.length > 0) && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
               {lateEmployees.length > 0 && (
-                <div className="bg-white rounded-lg shadow-md">
-                  <div className="px-6 py-4 border-b border-gray-200 bg-orange-50">
-                    <h2 className="text-lg font-medium text-orange-900">
-                      Karyawan Terlambat Hari Ini ({lateEmployees.length})
+                <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
+                  <div className="px-6 py-4 bg-orange-50">
+                    <h2 className="text-lg font-semibold text-orange-900">
+                      Karyawan Terlambat ({lateEmployees.length})
                     </h2>
                   </div>
-                  <div className="p-6">
-                    <div className="space-y-3">
+                  <div className="p-6 max-h-96 overflow-y-auto">
+                    <div className="space-y-4">
                       {lateEmployees.slice(0, 5).map((record) => (
-                        <div key={record.id} className="flex items-center justify-between p-3 bg-orange-50 rounded-lg">
-                          <div className="flex items-center space-x-3">
-                            <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center">
-                              <User className="h-4 w-4 text-orange-600" />
+                        <div key={record.id} className="flex items-center justify-between p-4 bg-orange-50 rounded-lg hover:bg-orange-100 transition-colors">
+                          <div className="flex items-center space-x-4">
+                            <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center">
+                              <User className="h-5 w-5 text-orange-600" />
                             </div>
                             <div>
-                              <p className="font-medium text-gray-900">
-                                {record.profiles?.name}
-                              </p>
-                              <p className="text-sm text-gray-600">
-                                Terlambat {record.late_minutes} menit
-                              </p>
+                              <p className="font-medium text-gray-900 text-sm">{record.profiles?.name}</p>
+                              <p className="text-xs text-gray-600">Terlambat {record.late_minutes} menit</p>
                             </div>
                           </div>
                           <div className="flex space-x-2">
                             <button
                               onClick={() => handleViewEmployee(record.profiles)}
-                              className="text-blue-600 hover:text-blue-800 p-1"
+                              className="p-2 text-blue-600 hover:bg-blue-100 rounded-full"
                               title="Lihat Detail"
                             >
-                              <Eye className="h-4 w-4" />
+                              <Eye className="h-5 w-5" />
                             </button>
                             <button
                               onClick={() => handleSendLateWarning(record)}
-                              className="text-orange-600 hover:text-orange-800 p-1"
+                              className="p-2 text-orange-600 hover:bg-orange-100 rounded-full"
                               title="Kirim Peringatan"
                             >
-                              <Bell className="h-4 w-4" />
+                              <Bell className="h-5 w-5" />
                             </button>
                             <button
                               onClick={() => handleIssueWarning(record.profiles)}
-                              className="text-red-600 hover:text-red-800 p-1"
+                              className="p-2 text-red-600 hover:bg-red-100 rounded-full"
                               title="Buat SP"
                             >
-                              <FileText className="h-4 w-4" />
+                              <FileText className="h-5 w-5" />
                             </button>
                           </div>
                         </div>
@@ -536,50 +575,46 @@ const AdminPanel = () => {
               )}
 
               {absentEmployees.length > 0 && (
-                <div className="bg-white rounded-lg shadow-md">
-                  <div className="px-6 py-4 border-b border-gray-200 bg-red-50">
-                    <h2 className="text-lg font-medium text-red-900">
-                      Karyawan Tidak Hadir Hari Ini ({absentEmployees.length})
+                <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
+                  <div className="px-6 py-4 bg-red-50">
+                    <h2 className="text-lg font-semibold text-red-900">
+                      Karyawan Absen ({absentEmployees.length})
                     </h2>
                   </div>
-                  <div className="p-6">
-                    <div className="space-y-3">
+                  <div className="p-6 max-h-96 overflow-y-auto">
+                    <div className="space-y-4">
                       {absentEmployees.slice(0, 5).map((employee) => (
-                        <div key={employee.id} className="flex items-center justify-between p-3 bg-red-50 rounded-lg">
-                          <div className="flex items-center space-x-3">
-                            <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center">
-                              <User className="h-4 w-4 text-red-600" />
+                        <div key={employee.id} className="flex items-center justify-between p-4 bg-red-50 rounded-lg hover:bg-red-100 transition-colors">
+                          <div className="flex items-center space-x-4">
+                            <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
+                              <User className="h-5 w-5 text-red-600" />
                             </div>
                             <div>
-                              <p className="font-medium text-gray-900">
-                                {employee.name}
-                              </p>
-                              <p className="text-sm text-gray-600">
-                                {employee.department || 'Tidak ada departemen'}
-                              </p>
+                              <p className="font-medium text-gray-900 text-sm">{employee.name}</p>
+                              <p className="text-xs text-gray-600">{employee.department || 'Tidak ada departemen'}</p>
                             </div>
                           </div>
                           <div className="flex space-x-2">
                             <button
                               onClick={() => handleViewEmployee(employee)}
-                              className="text-blue-600 hover:text-blue-800 p-1"
+                              className="p-2 text-blue-600 hover:bg-blue-100 rounded-full"
                               title="Lihat Detail"
                             >
-                              <Eye className="h-4 w-4" />
+                              <Eye className="h-5 w-5" />
                             </button>
                             <button
                               onClick={() => handleSendAbsentWarning(employee)}
-                              className="text-red-600 hover:text-red-800 p-1"
+                              className="p-2 text-red-600 hover:bg-red-100 rounded-full"
                               title="Kirim Peringatan"
                             >
-                              <Bell className="h-4 w-4" />
+                              <Bell className="h-5 w-5" />
                             </button>
                             <button
                               onClick={() => handleIssueWarning(employee)}
-                              className="text-red-600 hover:text-red-800 p-1"
+                              className="p-2 text-red-600 hover:bg-red-100 rounded-full"
                               title="Buat SP"
                             >
-                              <FileText className="h-4 w-4" />
+                              <FileText className="h-5 w-5" />
                             </button>
                           </div>
                         </div>
@@ -591,46 +626,32 @@ const AdminPanel = () => {
             </div>
           )}
 
-          <div className="bg-white rounded-lg shadow-md">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <div className="flex items-center space-x-2">
-                <Database className="h-5 w-5 text-blue-600" />
-                <h2 className="text-lg font-medium text-gray-900">Informasi Sistem</h2>
-              </div>
+          {/* System Information */}
+          <div className="bg-white rounded-2xl shadow-lg p-6">
+            <div className="flex items-center space-x-2 mb-4">
+              <Database className="h-6 w-6 text-blue-600" />
+              <h2 className="text-lg font-semibold text-gray-900">Informasi Sistem</h2>
             </div>
-            <div className="p-6">
-              <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                <div className="flex items-center space-x-3">
-                  <Database className="h-8 w-8 text-blue-600" />
-                  <div>
-                    <p className="font-medium text-gray-900">Database</p>
-                    <p className="text-sm text-gray-600">Supabase PostgreSQL</p>
-                  </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="flex items-center space-x-3 p-4 bg-blue-50 rounded-lg">
+                <Database className="h-8 w-8 text-blue-600" />
+                <div>
+                  <p className="font-medium text-gray-900 text-sm">Database</p>
+                  <p className="text-xs text-gray-600">Supabase PostgreSQL</p>
                 </div>
-                <div className="flex items-center space-x-3">
-                  <Clock className="h-8 w-8 text-green-600" />
-                  <div>
-                    <p className="font-medium text-gray-900">Jam Kerja</p>
-                    <p className="text-sm text-gray-600">08:00 - 17:00</p>
-                  </div>
+              </div>
+              <div className="flex items-center space-x-3 p-4 bg-purple-50 rounded-lg">
+                <MapPin className="h-8 w-8 text-purple-600" />
+                <div>
+                  <p className="font-medium text-gray-900 text-sm">Radius Kantor</p>
+                  <p className="text-xs text-gray-600">{systemSettings.office_location?.radius || 100} meter</p>
                 </div>
-                <div className="flex items-center space-x-3">
-                  <MapPin className="h-8 w-8 text-purple-600" />
-                  <div>
-                    <p className="font-medium text-gray-900">Radius Kantor</p>
-                    <p className="text-sm text-gray-600">
-                      {systemSettings.office_location?.radius || 100} meter
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center space-x-3">
-                  <Camera className="h-8 w-8 text-orange-600" />
-                  <div>
-                    <p className="font-medium text-gray-900">Verifikasi Wajah</p>
-                    <p className="text-sm text-gray-600">
-                      {cameraSettings.enabled ? 'Aktif' : 'Nonaktif'}
-                    </p>
-                  </div>
+              </div>
+              <div className="flex items-center space-x-3 p-4 bg-orange-50 rounded-lg">
+                <Camera className="h-8 w-8 text-orange-600" />
+                <div>
+                  <p className="font-medium text-gray-900 text-sm">Verifikasi Wajah</p>
+                  <p className="text-xs text-gray-600">{cameraSettings.enabled ? 'Aktif' : 'Nonaktif'}</p>
                 </div>
               </div>
             </div>
@@ -638,6 +659,7 @@ const AdminPanel = () => {
         </div>
       </div>
 
+      {/* Modals */}
       {showWarningModal && selectedEmployee && (
         <WarningLetterGenerator 
           employee={selectedEmployee}
@@ -648,8 +670,8 @@ const AdminPanel = () => {
       )}
 
       {showExportModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="max-w-2xl w-full bg-white rounded-xl shadow-lg">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="max-w-2xl w-full bg-white rounded-2xl shadow-2xl transform transition-all">
             <div className="p-6">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-xl font-semibold text-gray-900">Export Database</h2>
@@ -660,7 +682,6 @@ const AdminPanel = () => {
                   <XCircle className="h-6 w-6" />
                 </button>
               </div>
-
               <div className="space-y-6">
                 <div className="bg-blue-50 p-6 rounded-lg">
                   <div className="flex items-start space-x-4">
@@ -668,56 +689,36 @@ const AdminPanel = () => {
                     <div>
                       <h3 className="text-lg font-semibold text-blue-900 mb-2">Export Database Supabase</h3>
                       <p className="text-blue-700 mb-4">
-                        Untuk mengekspor seluruh database Supabase termasuk skema, data, dan storage, ikuti langkah-langkah berikut:
+                        Ikuti langkah-langkah berikut untuk mengekspor database:
                       </p>
                       <div className="space-y-4">
-                        <div className="bg-white p-4 rounded-lg border border-blue-200">
-                          <h4 className="font-medium text-blue-800 mb-2">1. Akses Dashboard Supabase</h4>
-                          <p className="text-sm text-blue-700">
-                            Login ke dashboard Supabase project Anda di <a href="https://app.supabase.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">app.supabase.com</a>
-                          </p>
-                        </div>
-                        <div className="bg-white p-4 rounded-lg border border-blue-200">
-                          <h4 className="font-medium text-blue-800 mb-2">2. Buka Menu Database</h4>
-                          <p className="text-sm text-blue-700">
-                            Pilih menu "Database" → "Backups" dari sidebar
-                          </p>
-                        </div>
-                        <div className="bg-white p-4 rounded-lg border border-blue-200">
-                          <h4 className="font-medium text-blue-800 mb-2">3. Generate Backup</h4>
-                          <p className="text-sm text-blue-700">
-                            Klik tombol "Generate backup" untuk membuat backup terbaru dari database Anda
-                          </p>
-                        </div>
-                        <div className="bg-white p-4 rounded-lg border border-blue-200">
-                          <h4 className="font-medium text-blue-800 mb-2">4. Download Backup</h4>
-                          <p className="text-sm text-blue-700">
-                            Setelah backup selesai dibuat, klik tombol "Download" untuk mengunduh file SQL
-                          </p>
-                        </div>
-                        <div className="bg-white p-4 rounded-lg border border-blue-200">
-                          <h4 className="font-medium text-blue-800 mb-2">5. Export Storage (Opsional)</h4>
-                          <p className="text-sm text-blue-700">
-                            Untuk mengekspor file storage (seperti foto wajah), gunakan menu "Storage" dan download setiap bucket secara terpisah
-                          </p>
-                        </div>
+                        {[
+                          { title: 'Akses Dashboard', desc: 'Login ke <a href="https://app.supabase.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">app.supabase.com</a>' },
+                          { title: 'Buka Menu Database', desc: 'Pilih menu "Database" → "Backups" dari sidebar' },
+                          { title: 'Generate Backup', desc: 'Klik "Generate backup" untuk membuat backup terbaru' },
+                          { title: 'Download Backup', desc: 'Klik "Download" untuk mengunduh file SQL' },
+                          { title: 'Export Storage', desc: 'Gunakan menu "Storage" untuk download bucket secara terpisah' }
+                        ].map((step, index) => (
+                          <div key={index} className="bg-white p-4 rounded-lg border border-blue-200">
+                            <h4 className="font-medium text-blue-800 mb-2">{index + 1}. {step.title}</h4>
+                            <p className="text-sm text-blue-700" dangerouslySetInnerHTML={{ __html: step.desc }} />
+                          </div>
+                        ))}
                       </div>
                     </div>
                   </div>
                 </div>
-
                 <div className="bg-yellow-50 p-4 rounded-lg">
                   <div className="flex items-start space-x-3">
                     <AlertTriangle className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" />
                     <div>
                       <p className="text-yellow-800 font-medium">Catatan Penting</p>
                       <p className="text-yellow-700 text-sm mt-1">
-                        Backup database berisi semua data sensitif. Pastikan untuk menyimpannya dengan aman dan tidak membagikannya kepada pihak yang tidak berwenang.
+                        Simpan backup dengan aman dan jangan bagikan kepada pihak yang tidak berwenang.
                       </p>
                     </div>
                   </div>
                 </div>
-
                 <div className="flex justify-end">
                   <button
                     onClick={() => setShowExportModal(false)}
@@ -733,8 +734,8 @@ const AdminPanel = () => {
       )}
 
       {showSettingsModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="max-w-md w-full bg-white rounded-xl shadow-lg">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="max-w-md w-full bg-white rounded-2xl shadow-2xl transform transition-all">
             <div className="p-6">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-xl font-semibold text-gray-900">Pengaturan Sistem</h2>
@@ -745,7 +746,6 @@ const AdminPanel = () => {
                   <XCircle className="h-6 w-6" />
                 </button>
               </div>
-
               <div className="space-y-6">
                 <div className="bg-blue-50 p-4 rounded-lg">
                   <h3 className="font-medium text-blue-900 mb-3">Verifikasi Kamera</h3>
@@ -762,28 +762,26 @@ const AdminPanel = () => {
                         className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                       />
                       <label htmlFor="camera-enabled" className="ml-2 block text-sm text-gray-900">
-                        Aktifkan verifikasi wajah untuk absensi
+                        Aktifkan verifikasi wajah
                       </label>
                     </div>
                     <div className="p-3 bg-white rounded-lg">
                       <p className="text-sm text-gray-600">
                         {cameraSettings.enabled 
-                          ? 'Karyawan harus melakukan verifikasi wajah saat absensi' 
-                          : 'Karyawan dapat absensi tanpa verifikasi wajah'}
+                          ? 'Karyawan harus verifikasi wajah saat absensi' 
+                          : 'Absensi tanpa verifikasi wajah'}
                       </p>
                     </div>
                     <div className="p-3 bg-yellow-50 rounded-lg">
                       <div className="flex items-start space-x-2">
                         <AlertTriangle className="h-4 w-4 text-yellow-600 flex-shrink-0 mt-0.5" />
                         <p className="text-sm text-yellow-700">
-                          Menonaktifkan verifikasi wajah akan mengurangi keamanan sistem absensi, 
-                          tetapi dapat berguna jika terjadi masalah dengan kamera atau perangkat.
+                          Nonaktifkan verifikasi wajah hanya jika terjadi masalah perangkat.
                         </p>
                       </div>
                     </div>
                   </div>
                 </div>
-
                 <div className="flex space-x-3">
                   <button
                     onClick={() => setShowSettingsModal(false)}
@@ -797,7 +795,7 @@ const AdminPanel = () => {
                   >
                     <div className="flex items-center justify-center space-x-2">
                       <Save className="h-4 w-4" />
-                      <span>Simpan Pengaturan</span>
+                      <span>Simpan</span>
                     </div>
                   </button>
                 </div>
@@ -812,22 +810,22 @@ const AdminPanel = () => {
 
 const StatCard = ({ icon: Icon, title, value, footer, color }) => {
   const colors = {
-    blue: { bg: 'bg-blue-50', text: 'text-blue-700' },
-    green: { bg: 'bg-green-50', text: 'text-green-700' },
-    orange: { bg: 'bg-orange-50', text: 'text-orange-700' },
-    red: { bg: 'bg-red-50', text: 'text-red-700' },
+    blue: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
+    green: { bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200' },
+    orange: { bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200' },
+    red: { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200' },
   };
   const selectedColor = colors[color] || colors.blue;
 
   return (
-    <div className="bg-white rounded-xl shadow-sm p-5 hover:shadow-md transition-shadow duration-200">
+    <div className="bg-white rounded-2xl shadow-lg p-4 sm:p-5 border border-gray-100 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
       <div className="flex items-center">
-        <div className={`w-10 h-10 ${selectedColor.bg} rounded-full flex items-center justify-center`}>
-          <Icon className={`h-5 w-5 ${selectedColor.text}`} />
+        <div className={`w-10 h-10 sm:w-12 sm:h-12 ${selectedColor.bg} ${selectedColor.border} rounded-xl flex items-center justify-center`}>
+          <Icon className={`h-5 w-5 sm:h-6 sm:w-6 ${selectedColor.text}`} />
         </div>
-        <div className="ml-3">
-          <p className="text-sm font-medium text-gray-700">{title}</p>
-          <p className="text-xl font-bold text-gray-900">{value}</p>
+        <div className="ml-3 sm:ml-4">
+          <p className="text-xs sm:text-sm font-medium text-gray-600">{title}</p>
+          <p className="text-lg sm:text-2xl font-bold text-gray-900">{value}</p>
           <p className={`text-xs ${selectedColor.text}`}>{footer}</p>
         </div>
       </div>

@@ -325,12 +325,6 @@ const AttendanceHistory = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between py-4">
             <div className="flex items-center space-x-4">
-              <button
-                onClick={() => navigate(userRole === 'admin' ? '/admin' : '/dashboard')}
-                className="p-2 bg-white/20 hover:bg-white/30 rounded-lg transition-colors"
-              >
-                <ArrowLeft className="h-5 w-5 text-white" />
-              </button>
               <div>
                 <h1 className="text-2xl font-bold text-white">Laporan Absensi</h1>
                 <p className="text-sm text-blue-100">

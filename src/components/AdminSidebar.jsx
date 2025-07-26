@@ -1,19 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { 
-  Users, 
-  BarChart3, 
-  MapPin, 
+import {
+  Users,
+  BarChart3,
   LogOut,
-  UserPlus,
   Building,
   CreditCard,
   Menu,
   X,
   Database,
   Briefcase,
-  Calendar,
-  ChevronLeft
+  CalendarClock,
+  ChevronLeft,
+  Settings,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 import { supabase } from '../utils/supabaseClient';
 
@@ -21,6 +22,19 @@ const AdminSidebar = ({ user, profile, isCollapsed, setIsCollapsed }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const [expandedMenus, setExpandedMenus] = useState(['Kelola']);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const handleResize = () => {
+      const mobile = window.innerWidth < 1024;
+      setIsMobile(mobile);
+      if (!mobile) setIsMobileOpen(false);
+    };
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const handleLogout = async () => {
     try {
@@ -28,12 +42,26 @@ const AdminSidebar = ({ user, profile, isCollapsed, setIsCollapsed }) => {
       await window.Swal.fire({
         icon: 'success',
         title: 'Logout Berhasil',
-        text: 'Anda telah berhasil logout.'
+        text: 'Anda telah keluar.',
       });
       navigate('/login');
     } catch (error) {
-      console.error('Failed to log out:', error);
+      console.error('Logout gagal:', error);
     }
+  };
+
+  const toggleSubmenu = (title) => {
+    setExpandedMenus((prev) =>
+      prev.includes(title)
+        ? prev.filter((item) => item !== title)
+        : [...prev, title]
+    );
+  };
+
+  const handleMobileToggle = () => setIsMobileOpen(!isMobileOpen);
+  const handleNavigation = (path) => {
+    navigate(path);
+    if (isMobile) setIsMobileOpen(false);
   };
 
   const menuItems = [
@@ -41,190 +69,141 @@ const AdminSidebar = ({ user, profile, isCollapsed, setIsCollapsed }) => {
       title: 'Dashboard',
       icon: <BarChart3 className="h-5 w-5" />,
       path: '/admin',
-      active: location.pathname === '/admin'
+      active: location.pathname === '/admin',
     },
     {
-      title: 'Master Data',
+      title: 'Kelola',
       icon: <Database className="h-5 w-5" />,
       submenu: [
-        {
-          title: 'Kelola Pengguna',
-          icon: <UserPlus className="h-5 w-5" />,
-          path: '/admin/users',
-          active: location.pathname === '/admin/users'
-        },
-        {
-          title: 'Kelola Departemen',
-          icon: <Building className="h-5 w-5" />,
-          path: '/admin/departments',
-          active: location.pathname === '/admin/departments'
-        },
-        {
-          title: 'Kelola Jabatan',
-          icon: <Briefcase className="h-5 w-5" />,
-          path: '/admin/positions',
-          active: location.pathname === '/admin/positions'
-        },
-        {
-          title: 'Kelola Bank',
-          icon: <Database className="h-5 w-5" />,
-          path: '/admin/bank',
-          active: location.pathname === '/admin/bank'
-        }
-      ]
+        { title: 'Kelola Pengguna', icon: <Users className="h-5 w-5" />, path: '/admin/users' },
+        { title: 'Kelola Departemen', icon: <Building className="h-5 w-5" />, path: '/admin/departments' },
+        { title: 'Kelola Jabatan', icon: <Briefcase className="h-5 w-5" />, path: '/admin/positions' },
+        { title: 'Kelola Bank', icon: <CreditCard className="h-5 w-5" />, path: '/admin/bank' },
+        { title: 'Kelola Absensi', icon: <CalendarClock className="h-5 w-5" />, path: '/admin/attendance' },
+        { title: 'Kelola Pembayaran', icon: <CreditCard className="h-5 w-5" />, path: '/admin/salary-payment' },
+      ],
     },
     {
-      title: 'Kelola Absensi',
-      icon: <Calendar className="h-5 w-5" />,
-      path: '/admin/attendance',
-      active: location.pathname === '/admin/attendance'
-    },
-    {
-      title: 'Kelola Pembayaran',
-      icon: <CreditCard className="h-5 w-5" />,
-      path: '/admin/salary-payment',
-      active: location.pathname === '/admin/salary-payment'
-    },
-    {
-      title: 'Lokasi Kantor',
-      icon: <MapPin className="h-5 w-5" />,
+      title: 'Pengaturan Sistem',
+      icon: <Settings className="h-5 w-5" />,
       path: '/admin/location',
-      active: location.pathname === '/admin/location'
-    }
+      active: location.pathname === '/admin/location',
+    },
   ];
-
-  const [expandedMenus, setExpandedMenus] = useState(['Master Data']);
-
-  const toggleSubmenu = (title) => {
-    setExpandedMenus(prev => 
-      prev.includes(title) 
-        ? prev.filter(item => item !== title)
-        : [...prev, title]
-    );
-  };
 
   return (
     <>
-      {/* Mobile menu button */}
-      <div className="lg:hidden fixed top-4 left-4 z-50 print:hidden">
+      {/* FAB untuk mobile */}
+      {isMobile && (
         <button
-          onClick={() => setIsMobileOpen(!isMobileOpen)}
-          className="p-2 rounded-lg bg-white shadow-lg text-gray-600 hover:bg-gray-200 transition-colors"
+          onClick={handleMobileToggle}
+          className="fixed bottom-5 right-5 z-50 p-3 rounded-full bg-indigo-600 text-white shadow-lg hover:bg-indigo-700 transition"
         >
           {isMobileOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
         </button>
-      </div>
-
-      {/* Mobile overlay */}
-      <div 
-        className={`lg:hidden fixed inset-0 bg-black/60 z-40 transition-opacity duration-300 ${
-          isMobileOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
-        }`}
-        onClick={() => setIsMobileOpen(false)}
-      ></div>
+      )}
 
       {/* Sidebar */}
-      <div
-        className={`fixed inset-y-0 left-0 z-40 bg-white shadow-2xl transition-all duration-300 ease-in-out
-          ${isCollapsed ? 'w-16' : 'w-64'}
-          ${isMobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-          max-w-xs lg:max-w-none print:hidden
+      <aside
+        className={`fixed top-0 left-0 h-full z-50 bg-white border-r shadow-md transition-all duration-300
+          ${isCollapsed && !isMobile ? 'w-16' : 'w-64'}
+          ${isMobile ? (isMobileOpen ? 'translate-x-0' : '-translate-x-full') : 'translate-x-0'}
         `}
       >
         <div className="flex flex-col h-full">
           {/* Header */}
-          <div className="flex items-center justify-between h-16 bg-gradient-to-r from-blue-700 to-indigo-600 text-white px-4">
-            <div className="flex items-center">
-              <Building className="h-7 w-7 flex-shrink-0" />
-              {!isCollapsed && <span className="ml-2 text-lg font-semibold tracking-tight">Admin Panel</span>}
-            </div>
-            <button
-              onClick={() => setIsCollapsed(!isCollapsed)}
-              className="hidden lg:block p-1 rounded-full hover:bg-blue-800 transition-colors"
-            >
-              <ChevronLeft className={`h-5 w-5 transform transition-transform ${isCollapsed ? 'rotate-180' : ''}`} />
-            </button>
+          <div className="flex items-center justify-between px-4 h-16 bg-gradient-to-r from-blue-700 to-indigo-600 text-white">
+            {!isCollapsed && <span className="font-semibold text-lg truncate">Admin Panel</span>}
+            {!isMobile && (
+              <button
+                onClick={() => setIsCollapsed(!isCollapsed)}
+                className="p-1 hover:bg-blue-800 rounded transition"
+              >
+                <ChevronLeft className={`h-5 w-5 transition-transform ${isCollapsed ? 'rotate-180' : ''}`} />
+              </button>
+            )}
           </div>
 
-          {/* User info */}
-          <div className={`flex items-center ${isCollapsed ? 'justify-center py-3' : 'px-4 py-4'} border-b border-gray-200 bg-gray-50/50`}>
+          {/* Profil */}
+          <div className="flex items-center gap-3 px-4 py-4 border-b bg-gray-50">
             <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center overflow-hidden">
               {profile?.avatar_url ? (
-                <img 
-                  src={profile.avatar_url} 
-                  alt={profile.name} 
-                  className="w-full h-full object-cover"
-                />
+                <img src={profile.avatar_url} alt="avatar" className="w-full h-full object-cover" />
               ) : (
                 <Users className="h-6 w-6 text-blue-600" />
               )}
             </div>
             {!isCollapsed && (
-              <div className="ml-3 overflow-hidden">
-                <p className="text-sm font-medium text-gray-900 truncate">{profile?.name || 'Admin'}</p>
-                <p className="text-xs text-gray-500 truncate">{profile?.email || user?.email}</p>
+              <div className="truncate">
+                <p className="text-sm font-medium text-gray-900">{profile?.name || 'Admin'}</p>
+                <p className="text-xs text-gray-500">{profile?.email || user?.email}</p>
               </div>
             )}
           </div>
 
-          {/* Menu items */}
-          <nav className="flex-1 overflow-y-auto py-4 px-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent">
+          {/* Menu */}
+          <nav className="flex-1 overflow-y-auto py-4 px-2">
             <ul className="space-y-1">
               {menuItems.map((item) => (
                 <li key={item.title}>
                   {item.submenu ? (
-                    <div>
+                    <>
                       <button
                         onClick={() => toggleSubmenu(item.title)}
-                        className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'justify-between px-3'} py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors duration-200`}
+                        className={`w-full flex items-center justify-between px-3 py-3 text-sm rounded-lg transition
+                          ${expandedMenus.includes(item.title)
+                            ? 'bg-blue-50 text-blue-600'
+                            : 'hover:bg-gray-100 text-gray-700'}`}
                       >
-                        <div className="flex items-center">
-                          <span className="text-gray-500">{item.icon}</span>
-                          {!isCollapsed && <span className="ml-3">{item.title}</span>}
+                        <div className="flex items-center gap-3">
+                          {item.icon}
+                          {!isCollapsed && <span>{item.title}</span>}
                         </div>
                         {!isCollapsed && (
-                          <ChevronLeft className={`h-4 w-4 text-gray-400 transform transition-transform duration-200 ${expandedMenus.includes(item.title) ? 'rotate-90' : ''}`} />
+                          <ChevronDown
+                            className={`h-4 w-4 transition-transform ${
+                              expandedMenus.includes(item.title) ? 'rotate-180' : ''
+                            }`}
+                          />
                         )}
                       </button>
-                      {(!isCollapsed && expandedMenus.includes(item.title)) && (
-                        <ul className="ml-4 space-y-1 mt-1">
-                          {item.submenu.map((subItem) => (
-                            <li key={subItem.path}>
+                      <div
+                        className={`overflow-hidden transition-all duration-300 ${
+                          expandedMenus.includes(item.title) ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'
+                        }`}
+                      >
+                        <ul className="ml-5 mt-1 space-y-1 border-l pl-4 border-gray-200">
+                          {item.submenu.map((sub) => (
+                            <li key={sub.path}>
                               <button
-                                onClick={() => {
-                                  navigate(subItem.path);
-                                  if (window.innerWidth < 1024) setIsMobileOpen(false);
-                                }}
-                                className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors duration-200
-                                  ${subItem.active 
-                                    ? 'text-blue-600 bg-blue-50 font-semibold' 
-                                    : 'text-gray-600 hover:bg-gray-100'}`}
+                                onClick={() => handleNavigation(sub.path)}
+                                className={`flex w-full items-center gap-3 px-3 py-2 text-sm rounded-md transition
+                                  ${location.pathname === sub.path
+                                    ? 'bg-blue-50 text-blue-600 font-semibold'
+                                    : 'text-gray-600 hover:bg-gray-100'}
+                                `}
                               >
-                                <span className={`${subItem.active ? 'text-blue-600' : 'text-gray-400'}`}>
-                                  {subItem.icon}
-                                </span>
-                                <span className="ml-3">{subItem.title}</span>
+                                {sub.icon}
+                                {!isCollapsed && <span>{sub.title}</span>}
+                                {location.pathname === sub.path && !isCollapsed && (
+                                  <ChevronRight className="ml-auto h-4 w-4 text-blue-500" />
+                                )}
                               </button>
                             </li>
                           ))}
                         </ul>
-                      )}
-                    </div>
+                      </div>
+                    </>
                   ) : (
                     <button
-                      onClick={() => {
-                        navigate(item.path);
-                        if (window.innerWidth < 1024) setIsMobileOpen(false);
-                      }}
-                      className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'justify-start px-3'} py-2.5 text-sm font-medium rounded-lg transition-colors duration-200
-                        ${item.active 
-                          ? 'text-blue-600 bg-blue-50 font-semibold' 
-                          : 'text-gray-700 hover:bg-gray-100'}`}
+                      onClick={() => handleNavigation(item.path)}
+                      className={`flex w-full items-center gap-3 px-3 py-3 text-sm rounded-lg transition
+                        ${item.active ? 'bg-blue-50 text-blue-600 font-medium' : 'hover:bg-gray-100 text-gray-700'}
+                      `}
                     >
-                      <span className={`${item.active ? 'text-blue-600' : 'text-gray-500'}`}>
-                        {item.icon}
-                      </span>
-                      {!isCollapsed && <span className="ml-3">{item.title}</span>}
+                      {item.icon}
+                      {!isCollapsed && <span>{item.title}</span>}
+                      {item.active && !isCollapsed && <ChevronRight className="ml-auto h-4 w-4 text-blue-500" />}
                     </button>
                   )}
                 </li>
@@ -232,18 +211,27 @@ const AdminSidebar = ({ user, profile, isCollapsed, setIsCollapsed }) => {
             </ul>
           </nav>
 
-          {/* Logout button */}
-          <div className="p-3 border-t border-gray-200">
+          {/* Logout */}
+          <div className="p-3 border-t">
             <button
               onClick={handleLogout}
-              className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'justify-start px-3'} py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors duration-200`}
+              className="flex items-center gap-3 px-3 py-2 text-sm text-red-600 rounded-lg hover:bg-red-50 transition"
             >
               <LogOut className="h-5 w-5" />
-              {!isCollapsed && <span className="ml-3">Logout</span>}
+              {!isCollapsed && <span>Logout</span>}
             </button>
           </div>
         </div>
-      </div>
+      </aside>
+
+      {/* Overlay untuk mobile */}
+      {isMobile && isMobileOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40"
+          onClick={handleMobileToggle}
+          aria-hidden="true"
+        />
+      )}
     </>
   );
 };

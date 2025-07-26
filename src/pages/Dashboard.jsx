@@ -39,12 +39,10 @@ const ReactCalendar = ({ onChange, value, tileContent, tileClassName, locale, cl
     
     const days = [];
     
-    // Add empty cells for days before the first day of the month
     for (let i = 0; i < startingDayOfWeek; i++) {
       days.push(null);
     }
     
-    // Add days of the month
     for (let day = 1; day <= daysInMonth; day++) {
       days.push(new Date(year, month, day));
     }
@@ -167,7 +165,6 @@ const Dashboard = () => {
     checkUser();
   }, [checkUser]);
 
-  // Real-time clock update
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentTime(new Date());
@@ -293,7 +290,6 @@ const Dashboard = () => {
 
   const calculateStats = useCallback(async (todayData, userId) => {
     try {
-      // Get monthly attendance data for proper calculation
       const thisMonth = new Date();
       const startOfThisMonth = startOfMonth(thisMonth);
       const endOfThisMonth = endOfMonth(thisMonth);
@@ -303,8 +299,8 @@ const Dashboard = () => {
         .select('*')
         .eq('user_id', userId)
         .eq('status', 'berhasil')
-               .gte('timestamp', startOfThisMonth.toISOString())
-        .lte('endOfThisMonth.toISOString');
+        .gte('timestamp', startOfThisMonth.toISOString())
+        .lte('timestamp', endOfThisMonth.toISOString());
 
       if (error) throw error;
       const attendanceDays = new Set();
@@ -323,14 +319,12 @@ const Dashboard = () => {
         }
       });
 
-      // Calculate total workdays (excluding weekends) in the current month up to today
       const daysInMonth = eachDayOfInterval({
         start: startOfThisMonth,
         end: isToday(endOfThisMonth) ? new Date() : endOfThisMonth
       });
       const workDaysInMonth = daysInMonth.filter(day => !isWeekend(day)).length;
 
-      // Calculate absent days (workdays without attendance)
       const absentDays = workDaysInMonth - attendanceDays.size;
 
       const workDays = attendanceDays.size;
@@ -351,10 +345,8 @@ const Dashboard = () => {
       });
     } catch (error) {
       console.error('Error calculating stats:', error);
-      // Fallback to simple calculation
-      const workDays = todayData.filter(r => r.type === 'masuk' && r.status === 'berhasil').length;
       setStats({
-        thisMonth: workDays,
+        thisMonth: todayData.filter(r => r.type === 'masuk' && r.status === 'berhasil').length,
         onTime: 0,
         late: 0,
         absent: 0,
@@ -523,7 +515,7 @@ const Dashboard = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
         <div className="text-center">
           <div className="inline-flex space-x-1 text-blue-600">
             <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
@@ -537,13 +529,13 @@ const Dashboard = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 flex flex-col">
+    <div className="min-h-screen bg-gray-100 flex flex-col">
       {/* Header */}
       <div className="bg-white shadow-md border-b sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-3">
             <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm">
+              <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-blue-700 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm">
                 <User className="h-5 w-5 text-white" />
               </div>
               <div className="overflow-hidden">
@@ -668,15 +660,15 @@ const Dashboard = () => {
         </div>
 
         {/* Bank Info Card */}
-        <div className="mb-4 bg-gradient-to-br from-indigo-600 to-blue-600 text-white rounded-lg shadow-md p-4 transform hover:scale-[1.01] transition-all duration-200">
+        <div className="mb-4 bg-white text-gray-900 rounded-lg shadow-md p-4 border border-gray-100 transform hover:scale-[1.01] transition-all duration-200">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <div className="bg-white bg-opacity-20 p-2 rounded-full">
-                <CreditCard className="h-5 w-5 text-white" />
+              <div className="bg-blue-100 p-2 rounded-full">
+                <CreditCard className="h-5 w-5 text-blue-600" />
               </div>
               <div>
                 <h3 className="text-base font-semibold">Informasi Bank</h3>
-                <p className="text-xs opacity-80">
+                <p className="text-xs text-gray-500">
                   {bankInfo?.bank_info?.bank_name || 'Belum ada bank terdaftar'}
                 </p>
               </div>
@@ -684,11 +676,11 @@ const Dashboard = () => {
           </div>
           <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <p className="text-[0.65rem] opacity-80">Nomor Rekening</p>
+              <p className="text-[0.65rem] text-gray-500">Nomor Rekening</p>
               <p className="text-xs font-medium">{bankInfo?.bank_account_number || '-'}</p>
             </div>
             <div>
-              <p className="text-[0.65rem] opacity-80">Nama Pemilik</p>
+              <p className="text-[0.65rem] text-gray-500">Nama Pemilik</p>
               <p className="text-xs font-medium">{bankInfo?.bank_account_name || '-'}</p>
             </div>
           </div>
@@ -777,7 +769,7 @@ const Dashboard = () => {
             {canAttend && (
               <button
                 onClick={handleAttendanceClick}
-                className="w-full mt-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-2 px-4 rounded-lg font-medium hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 transform hover:scale-[1.02] shadow-sm"
+                className="w-full mt-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white py-2 px-4 rounded-lg font-medium hover:from-blue-700 hover:to-blue-800 transition-all duration-200 transform hover:scale-[1.02] shadow-sm"
               >
                 {!hasCheckedIn ? 'Absen Masuk' : 'Absen Keluar'}
               </button>
@@ -889,7 +881,7 @@ const Dashboard = () => {
 
 const StatCardMini = ({ icon: Icon, title, value, color }) => {
   const colors = {
-    blue: { bg: 'bg-blue-100', text: 'text-blue-600', gradient: 'bg-gradient-to-r from-blue-500 to-indigo-600' },
+    blue: { bg: 'bg-blue-100', text: 'text-blue-600', gradient: 'bg-gradient-to-r from-blue-600 to-blue-700' },
     green: { bg: 'bg-green-100', text: 'text-green-600', gradient: 'bg-gradient-to-r from-green-500 to-emerald-600' },
     orange: { bg: 'bg-orange-100', text: 'text-orange-600', gradient: 'bg-gradient-to-r from-orange-500 to-amber-600' },
     red: { bg: 'bg-red-100', text: 'text-red-600', gradient: 'bg-gradient-to-r from-red-500 to-rose-600' },
@@ -1019,11 +1011,11 @@ const ProfileEditor = ({ user, profile, onClose }) => {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] flex flex-col animate-fade-in">
-        <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gradient-to-r from-blue-50 to-indigo-50 rounded-t-xl">
+        <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50 rounded-t-xl">
           <h2 className="text-lg font-bold text-gray-800">Kelola Profil</h2>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-full hover:bg-white/50 transition-colors duration-200"
+            className="p-1.5 rounded-full hover:bg-gray-100 transition-colors duration-200"
             aria-label="Tutup"
           >
             <XCircle className="h-5 w-5 text-gray-600" />
@@ -1040,7 +1032,7 @@ const ProfileEditor = ({ user, profile, onClose }) => {
               key={key}
               className={`flex-1 px-3 py-3 text-xs font-medium transition-all duration-200 flex items-center justify-center space-x-1 ${
                 activeTab === key
-                  ? 'border-b-2 border-blue-500 text-blue-600 bg-blue-50'
+                  ? 'border-b-2 border-blue-600 text-blue-600 bg-blue-50'
                   : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
               }`}
               onClick={() => setActiveTab(key)}
@@ -1088,12 +1080,12 @@ const ProfileEditor = ({ user, profile, onClose }) => {
           
           {activeTab === 'bank' && (
             <div className="space-y-4 animate-fade-in">
-              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-lg border border-blue-200">
+              <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
                 <div className="flex items-center space-x-2 mb-2">
                   <CreditCard className="h-5 w-5 text-blue-600" />
                   <h3 className="font-semibold text-blue-800">Informasi Bank</h3>
                 </div>
-                <p className="text-sm text-blue-600">Data bank hanya dapat di ubah, silahkan hubungi pihak kantor</p>
+                <p className="text-sm text-blue-600">Data bank hanya dapat diubah oleh pihak kantor.</p>
               </div>
               
               <div className="space-y-4">
@@ -1153,29 +1145,29 @@ const ProfileEditor = ({ user, profile, onClose }) => {
             <form onSubmit={handleChangePassword} className="space-y-4 animate-fade-in">
               <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
                 <div className="flex items-center space-x-2 mb-2">
-                  <Settings className="h-5 w-5 text-yellow-600" />
-                  <h3 className="font-semibold text-yellow-800">Keamanan Akun</h3>
+                  <Settings className="h-5 w-5 text-blue-600" />
+                  <h3 className="font-semibold text-blue-600">Keamanan Akun</h3>
                 </div>
-                <p className="text-sm text-yellow-600">Ubah password untuk menjaga keamanan akun Anda</p>
+                <p className="text-sm text-blue-600">Ubah password untuk menjaga keamanan akun Anda</p>
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Password Baru</label>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Password Baru</label>
                 <input
-                  type="password"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 text-sm"
-                  value={passwordData.newPassword}
+                  type="password" 
+                  class="w-full border border-gray-300 px-3 py-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 text-sm"
+                  value="passwordData.newPassword"
                   onChange={e => setPasswordData({ ...passwordData, newPassword: e.target.value })}
                   placeholder="Masukkan password baru"
                   required
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Konfirmasi Password</label>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Konfirmasi Password</label>
                 <input
                   type="password"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 text-sm"
-                  value={passwordData.confirmPassword}
+                  class="w-full border border-gray-300 px-3 py-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 text-sm"
+                  value="passwordData.confirmPassword"
                   onChange={e => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
                   placeholder="Ulangi password baru"
                   required
@@ -1185,26 +1177,25 @@ const ProfileEditor = ({ user, profile, onClose }) => {
           )}
         </div>
         
-        <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-end gap-3 rounded-b-xl">
-          <button
+        <div class="p-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-3 rounded-b-xl">
+          <button 
             onClick={onClose}
-            className="px-4 py-2 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors duration-200 text-sm font-medium"
+            class="px-4 py-2 rounded-lg bg-gray-200 text-gray-800 hover:bg-gray-300 transition-colors duration-200 text-sm font-medium"
           >
             {activeTab === 'bank' ? 'Tutup' : 'Batal'}
           </button>
           {activeTab === 'profile' && (
-            <button
+            <button 
               onClick={handleSaveProfile}
-              className="px-4 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 transform hover:scale-[1.02] text-sm font-medium shadow-md"
+              className="px-4 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-blue-700 text-white hover:from-blue-700 hover:to-blue-800 transition-colors duration-300 text-sm font-medium shadow-sm"
               disabled={isSubmitting}
             >
               {isSubmitting ? 'Menyimpan...' : 'Simpan'}
             </button>
           )}
           {activeTab === 'password' && (
-            <button
-              onClick={handleChangePassword}
-              className="px-4 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 transform hover:scale-[1.02] text-sm font-medium shadow-md"
+            <button 
+              class="px-4 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-blue-700 text-white hover:from-blue-700 hover:to-blue-800 transition-colors duration-300 text-sm font-medium shadow-md"
               disabled={isSubmitting}
             >
               {isSubmitting ? 'Menyimpan...' : 'Ubah Password'}
