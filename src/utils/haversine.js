@@ -30,10 +30,16 @@ export function haversine(lat1, lon1, lat2, lon2) {
  * @param {number} officeLat - Office latitude
  * @param {number} officeLon - Office longitude
  * @param {number} allowedRadius - Allowed radius in meters
+ * @param {boolean} returnDistance - If true, returns distance instead of boolean
  * @returns {boolean} True if within radius
  */
-export function isWithinRadius(userLat, userLon, officeLat, officeLon, allowedRadius) {
+export function isWithinRadius(userLat, userLon, officeLat, officeLon, allowedRadius, returnDistance = false) {
   const distance = haversine(userLat, userLon, officeLat, officeLon);
+  
+  if (returnDistance) {
+    return distance;
+  }
+  
   return distance <= allowedRadius;
 }
 

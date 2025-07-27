@@ -431,7 +431,7 @@ const DashboardPage = () => {
         icon: 'info',
         title: 'Informasi',
         text: 'Anda sudah melakukan absensi masuk dan keluar hari ini.',
-      });
+      }).then(() => {});
       return;
     }
     setShowAttendanceForm(true);

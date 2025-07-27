@@ -3,16 +3,20 @@ import { MapPin, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
 import { getCurrentLocation, isWithinRadius } from '../utils/haversine';
 import { getOfficeLocation } from '../utils/supabaseClient';
 
-const LocationValidator = ({ onLocationValidated }) => {
+const LocationValidator = ({ onLocationValidated, officeLocation: propOfficeLocation, isMobile }) => {
   const [location, setLocation] = useState(null);
   const [isValidLocation, setIsValidLocation] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [officeLocation, setOfficeLocation] = useState(null);
+  const [officeLocation, setOfficeLocation] = useState(propOfficeLocation);
+  const [distance, setDistance] = useState(null);
 
   useEffect(() => {
+    if (propOfficeLocation) {
+      setOfficeLocation(propOfficeLocation);
+    }
     initializeAndValidate();
-  }, []);
+  }, [propOfficeLocation]);
 
   const initializeAndValidate = async () => {
     setIsLoading(true);
@@ -20,25 +24,28 @@ const LocationValidator = ({ onLocationValidated }) => {
     
     try {
       // Get current office location from system settings
-      const office = await getOfficeLocation();
+      const office = officeLocation || await getOfficeLocation();
       setOfficeLocation(office);
       
       // Get user location
       const userLocation = await getCurrentLocation();
       setLocation(userLocation);
       
-      const isValid = isWithinRadius(
+      const calculatedDistance = isWithinRadius(
         userLocation.latitude,
         userLocation.longitude,
         office.latitude,
         office.longitude,
-        office.radius
+        office.radius,
+        true // Return distance instead of boolean
       );
       
+      setDistance(calculatedDistance);
+      const isValid = calculatedDistance <= office.radius;
       setIsValidLocation(isValid);
       
       if (onLocationValidated) {
-        onLocationValidated(isValid, userLocation);
+        onLocationValidated(isValid, userLocation, calculatedDistance);
       }
       
     } catch (err) {
@@ -58,7 +65,7 @@ const LocationValidator = ({ onLocationValidated }) => {
       
       setError(errorMessage);
       if (onLocationValidated) {
-        onLocationValidated(false, null);
+        onLocationValidated(false, null, null);
       }
     } finally {
       setIsLoading(false);
@@ -122,6 +129,16 @@ const LocationValidator = ({ onLocationValidated }) => {
               : `Anda harus berada dalam radius ${officeLocation?.radius || 100} meter dari kantor untuk absen.`
             }
           </p>
+          
+          {distance && (
+            <div className="mb-3 p-2 bg-white/70 rounded">
+              <p className="text-sm font-medium text-gray-700">
+                Jarak dari kantor: {distance > 1000 
+                  ? `${(distance / 1000).toFixed(1)} km` 
+                  : `${Math.round(distance)} meter`}
+              </p>
+            </div>
+          )}
           
           {location && officeLocation && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">

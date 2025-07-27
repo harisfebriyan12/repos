@@ -185,7 +185,7 @@ const AttendanceHistory = () => {
 
   const exportToCsv = () => {
     if (filteredData.length === 0) {
-      Swal.fire({ icon: 'info', title: 'Tidak Ada Data', text: 'Tidak ada data absensi untuk diexport.' });
+      Swal.fire({ icon: 'info', title: 'Tidak Ada Data', text: 'Tidak ada data absensi untuk diexport.' }).then(() => {});
       return;
     }
     try {
@@ -238,9 +238,9 @@ const AttendanceHistory = () => {
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
-      Swal.fire({ icon: 'success', title: 'Export Berhasil', text: 'Data absensi berhasil diexport ke CSV.' });
+      await Swal.fire({ icon: 'success', title: 'Export Berhasil', text: 'Data absensi berhasil diexport ke CSV.' });
     } catch (err) {
-      Swal.fire({ icon: 'error', title: 'Export Gagal', text: 'Terjadi kesalahan saat export data absensi.' });
+      await Swal.fire({ icon: 'error', title: 'Export Gagal', text: 'Terjadi kesalahan saat export data absensi.' });
     }
   };
 

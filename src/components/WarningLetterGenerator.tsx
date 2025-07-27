@@ -43,12 +43,12 @@ const WarningLetterGenerator = ({ employee, onClose, onGenerated, issuedByUserId
 
   const generateLetter = async () => {
     if (!reason.trim()) {
-      Swal.fire({ icon: 'warning', title: 'Alasan wajib diisi', text: 'Alasan peringatan harus diisi.' });
+      await Swal.fire({ icon: 'warning', title: 'Alasan wajib diisi', text: 'Alasan peringatan harus diisi.' });
       return;
     }
 
     if (!issuedByUserId) {
-      Swal.fire({ icon: 'error', title: 'Gagal', text: 'Tidak dapat menentukan pengguna yang mengeluarkan surat.' });
+      await Swal.fire({ icon: 'error', title: 'Gagal', text: 'Tidak dapat menentukan pengguna yang mengeluarkan surat.' });
       return;
     }
 
@@ -60,7 +60,6 @@ const WarningLetterGenerator = ({ employee, onClose, onGenerated, issuedByUserId
         p_warning_type: warningType,
         p_reason: reason,
         p_description: description,
-        p_issued_by: issuedByUserId
       });
 
       if (error) throw error;
@@ -85,7 +84,7 @@ const WarningLetterGenerator = ({ employee, onClose, onGenerated, issuedByUserId
       
     } catch (error) {
       console.error('Error generating warning letter:', error);
-      Swal.fire({ icon: 'error', title: 'Gagal', text: 'Gagal membuat surat peringatan: ' + error.message });
+      await Swal.fire({ icon: 'error', title: 'Gagal', text: 'Gagal membuat surat peringatan: ' + error.message });
     } finally {
       setIsGenerating(false);
     }
@@ -93,7 +92,7 @@ const WarningLetterGenerator = ({ employee, onClose, onGenerated, issuedByUserId
 
   const generatePDF = () => {
     if (!generatedLetter) {
-      Swal.fire({ icon: 'error', title: 'Gagal', text: 'Surat belum digenerate.' });
+      Swal.fire({ icon: 'error', title: 'Gagal', text: 'Surat belum digenerate.' }).then(() => {});
       return;
     }
     
@@ -645,7 +644,7 @@ Tanda Tangan & Stempel
                 </button>
                 
                 <button
-                  onClick={() => Swal.fire({ icon: 'info', title: 'Segera Tersedia', text: 'Fitur kirim email akan segera tersedia.' })}
+                  onClick={() => Swal.fire({ icon: 'info', title: 'Segera Tersedia', text: 'Fitur kirim email akan segera tersedia.' }).then(() => {})}
                   className="px-4 py-3 bg-yellow-600 text-white rounded-lg font-medium hover:bg-yellow-700 transition-colors"
                 >
                   <div className="flex items-center space-x-2">

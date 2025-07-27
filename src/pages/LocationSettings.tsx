@@ -187,7 +187,7 @@ const SystemSettings = () => {
         confirmButtonColor: '#2563eb',
         timer: 3000,
         timerProgressBar: true,
-      });
+      }).then(() => {});
     } catch (error) {
       console.error('Error saving office location:', error);
       Swal.fire({
@@ -195,7 +195,7 @@ const SystemSettings = () => {
         title: 'Error',
         text: 'Gagal menyimpan lokasi kantor',
         confirmButtonColor: '#2563eb',
-      });
+      }).then(() => {});
     } finally {
       setIsSaving(false);
     }
@@ -234,7 +234,7 @@ const SystemSettings = () => {
         confirmButtonColor: '#2563eb',
         timer: 3000,
         timerProgressBar: true,
-      });
+      }).then(() => {});
     } catch (error) {
       console.error('Error updating radius:', error);
       Swal.fire({
@@ -242,7 +242,7 @@ const SystemSettings = () => {
         title: 'Error',
         text: 'Gagal memperbarui radius absensi',
         confirmButtonColor: '#2563eb',
-      });
+      }).then(() => {});
     } finally {
       setIsSaving(false);
     }
@@ -280,7 +280,7 @@ const SystemSettings = () => {
         confirmButtonColor: '#2563eb',
         timer: 3000,
         timerProgressBar: true,
-      });
+      }).then(() => {});
       setShowWorkHoursSettings(false);
     } catch (error) {
       console.error('Error saving work hours settings:', error);
@@ -289,7 +289,7 @@ const SystemSettings = () => {
         title: 'Error',
         text: 'Gagal menyimpan pengaturan jam kerja',
         confirmButtonColor: '#2563eb',
-      });
+      }).then(() => {});
     } finally {
       setIsSaving(false);
     }
@@ -319,7 +319,7 @@ const SystemSettings = () => {
         confirmButtonColor: '#2563eb',
         timer: 3000,
         timerProgressBar: true,
-      });
+      }).then(() => {});
       setShowCameraSettings(false);
     } catch (error) {
       console.error('Error saving camera settings:', error);
@@ -328,7 +328,7 @@ const SystemSettings = () => {
         title: 'Error',
         text: 'Gagal menyimpan pengaturan verifikasi kamera',
         confirmButtonColor: '#2563eb',
-      });
+      }).then(() => {});
     } finally {
       setIsSaving(false);
     }

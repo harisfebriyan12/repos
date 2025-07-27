@@ -268,7 +268,7 @@ const AdminDashboardPage = () => {
 
   const handleWarningGenerated = async (warningLetter: any) => {
     setShowWarningModal(false);
-    await Swal.fire({ icon: 'success', title: 'Surat Peringatan', text: `Surat peringatan ${warningLetter.warning_type} berhasil dibuat dan dikirim ke ${selectedEmployee.name}` });
+    await Swal.fire({ icon: 'success', title: 'Surat Peringatan', text: `Surat peringatan ${warningLetter.warning_type} berhasil dibuat dan dikirim ke ${selectedEmployee?.name || 'karyawan'}` });
     fetchDashboardData();
   };
 
@@ -286,13 +286,13 @@ const AdminDashboardPage = () => {
     try {
       await supabase.from('notifications').insert([{
         user_id: employeeId,
-        admin_id: user.id,
+        admin_id: user?.id,
         type: type,
         title: title,
         message: message,
         data: {
           timestamp: new Date().toISOString(),
-          sent_by: profile.name
+          sent_by: profile?.name || 'Admin'
         },
         is_read: false
       }]);

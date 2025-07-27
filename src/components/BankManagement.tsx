@@ -127,10 +127,10 @@ const BankManagement = () => {
     setError(null);
 
     // Validation
-      if (!formData.bank_name.trim()) {
-        Swal.fire({ icon: 'warning', title: 'Nama bank wajib diisi', text: 'Silakan isi nama bank.' });
-        return;
-      }
+    if (!formData.bank_name.trim()) {
+      await Swal.fire({ icon: 'warning', title: 'Nama bank wajib diisi', text: 'Silakan isi nama bank.' });
+      return;
+    }
 
     setContentLoading(true);
     try {
@@ -146,8 +146,8 @@ const BankManagement = () => {
           .update(bankData)
           .eq('id', editingBank.id);
 
-          if (error) throw error;
-          Swal.fire({ icon: 'success', title: 'Berhasil', text: 'Bank berhasil diperbarui!' });
+        if (error) throw error;
+        await Swal.fire({ icon: 'success', title: 'Berhasil', text: 'Bank berhasil diperbarui!' });
       } else {
         // Create new bank
         bankData.created_at = new Date().toISOString();
@@ -157,7 +157,7 @@ const BankManagement = () => {
           .insert([bankData]);
 
         if (error) throw error;
-          Swal.fire({ icon: 'success', title: 'Berhasil', text: 'Bank berhasil ditambahkan!' });
+        await Swal.fire({ icon: 'success', title: 'Berhasil', text: 'Bank berhasil ditambahkan!' });
       }
 
       resetForm();
@@ -168,7 +168,7 @@ const BankManagement = () => {
 
     } catch (error) {
       console.error('Error saving bank:', error);
-      Swal.fire({ icon: 'error', title: 'Gagal', text: 'Gagal menyimpan bank: ' + error.message });
+      await Swal.fire({ icon: 'error', title: 'Gagal', text: 'Gagal menyimpan bank: ' + error.message });
     } finally {
       setContentLoading(false);
     }
@@ -210,7 +210,7 @@ const BankManagement = () => {
       if (checkError) throw checkError;
 
       if (employees && employees.length > 0) {
-        Swal.fire({ icon: 'error', title: 'Tidak Bisa Dihapus', text: 'Bank tidak dapat dihapus karena masih digunakan oleh karyawan.' });
+        await Swal.fire({ icon: 'error', title: 'Tidak Bisa Dihapus', text: 'Bank tidak dapat dihapus karena masih digunakan oleh karyawan.' });
         return;
       }
 
@@ -221,7 +221,7 @@ const BankManagement = () => {
 
       if (error) throw error;
 
-      Swal.fire({ icon: 'success', title: 'Berhasil', text: 'Bank berhasil dihapus!' });
+      await Swal.fire({ icon: 'success', title: 'Berhasil', text: 'Bank berhasil dihapus!' });
       await fetchBanks();
 
     } catch (error) {

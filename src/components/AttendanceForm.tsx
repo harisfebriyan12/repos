@@ -67,7 +67,9 @@ const AttendanceForm = ({
     try {
       const location = await getOfficeLocation();
       setOfficeLocation(location);
-    } catch {}
+    } catch (error) {
+      console.error('Error fetching office location:', error);
+    }
   };
   const fetchWorkHoursSettings = async () => {
     try {
@@ -79,13 +81,16 @@ const AttendanceForm = ({
       if (data?.setting_value) {
         setWorkHoursSettings(prev => ({ ...prev, ...data.setting_value }));
       }
-    } catch {}
+    } catch (error) {
+      console.error('Error fetching work hours settings:', error);
+    }
   };
   const fetchCameraSettings = async () => {
     try {
       const settings = await getCameraVerificationSettings();
       setCameraVerificationEnabled(settings.enabled);
-    } catch {
+    } catch (error) {
+      console.error('Error fetching camera settings:', error);
       setCameraVerificationEnabled(true);
     }
   };
@@ -106,13 +111,15 @@ const AttendanceForm = ({
         try {
           const result = await processImageUrl(data.avatar_url);
           setStoredFingerprint(result.fingerprint);
-        } catch {
+        } catch (error) {
+          console.error('Error processing face image:', error);
           setError('Gagal memuat data wajah. Hubungi admin.');
         }
       } else if (cameraVerificationEnabled) {
         setError('Foto profil belum tersedia. Lengkapi profil Anda.');
       }
-    } catch {
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
       setError('Gagal memuat profil pengguna.');
     }
   };
@@ -126,7 +133,9 @@ const AttendanceForm = ({
         .order('timestamp', { ascending: false })
         .limit(1);
       setLastAttendance(data && data.length > 0 ? data[0] : null);
-    } catch {}
+    } catch (error) {
+      console.error('Error fetching last attendance:', error);
+    }
   };
 
   // --- Logic ---

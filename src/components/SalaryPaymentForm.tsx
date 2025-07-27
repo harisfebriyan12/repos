@@ -94,19 +94,19 @@ const SalaryPaymentForm = ({ employee, onClose, onPaymentProcessed }) => {
 
     try {
       if (!employee) {
-        Swal.fire({ icon: 'error', title: 'Gagal', text: 'Karyawan tidak ditemukan' });
+        await Swal.fire({ icon: 'error', title: 'Gagal', text: 'Karyawan tidak ditemukan' });
         return;
       }
 
       if (!formData.amount || formData.amount <= 0) {
-        Swal.fire({ icon: 'warning', title: 'Jumlah tidak valid', text: 'Jumlah pembayaran harus lebih dari 0' });
+        await Swal.fire({ icon: 'warning', title: 'Jumlah tidak valid', text: 'Jumlah pembayaran harus lebih dari 0' });
         return;
       }
 
       // Check if employee has bank account for bank transfers
       if (formData.payment_method === 'bank_transfer' && 
           (!employee.bank_info || !employee.bank_account_number)) {
-        Swal.fire({ icon: 'warning', title: 'Rekening belum diatur', text: 'Karyawan belum mengatur rekening bank. Gunakan metode pembayaran lain atau minta karyawan untuk mengatur rekening bank.' });
+        await Swal.fire({ icon: 'warning', title: 'Rekening belum diatur', text: 'Karyawan belum mengatur rekening bank. Gunakan metode pembayaran lain atau minta karyawan untuk mengatur rekening bank.' });
         return;
       }
 
@@ -197,7 +197,7 @@ const SalaryPaymentForm = ({ employee, onClose, onPaymentProcessed }) => {
       }
 
       setSuccess(`Pembayaran gaji sebesar ${formatCurrency(formData.amount)} untuk ${employee.name} berhasil diproses!`);
-      Swal.fire({ icon: 'success', title: 'Berhasil', text: `Pembayaran gaji sebesar ${formatCurrency(formData.amount)} untuk ${employee.name} berhasil diproses!` });
+      await Swal.fire({ icon: 'success', title: 'Berhasil', text: `Pembayaran gaji sebesar ${formatCurrency(formData.amount)} untuk ${employee.name} berhasil diproses!` });
       
       // Refresh payment history
       await fetchPaymentHistory();
@@ -227,7 +227,7 @@ const SalaryPaymentForm = ({ employee, onClose, onPaymentProcessed }) => {
 
     } catch (error) {
       console.error('Error processing payment:', error);
-      Swal.fire({ icon: 'error', title: 'Gagal', text: error.message || 'Gagal memproses pembayaran' });
+      await Swal.fire({ icon: 'error', title: 'Gagal', text: error.message || 'Gagal memproses pembayaran' });
     } finally {
       setLoading(false);
     }
