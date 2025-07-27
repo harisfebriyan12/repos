@@ -35,16 +35,17 @@ import {
   Tooltip,
   Legend,
 } from 'chart.js';
-import AdminSidebar from '../components/AdminSidebar';
 import WarningLetterGenerator from '../components/WarningLetterGenerator';
 import NotificationSystem from '../components/NotificationSystem';
+import StatCard from '../components/ui/StatCard';
+import { User, Profile } from '../types';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, Title, Tooltip, Legend);
 
-const AdminPanel = () => {
+const AdminDashboardPage = () => {
   const navigate = useNavigate();
-  const [user, setUser] = useState(null);
-  const [profile, setProfile] = useState(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [stats, setStats] = useState({
@@ -60,12 +61,12 @@ const AdminPanel = () => {
     activeDepartments: 0,
     absentToday: 0
   });
-  const [recentActivity, setRecentActivity] = useState([]);
-  const [lateEmployees, setLateEmployees] = useState([]);
-  const [absentEmployees, setAbsentEmployees] = useState([]);
-  const [systemSettings, setSystemSettings] = useState({});
+  const [recentActivity, setRecentActivity] = useState<any[]>([]);
+  const [lateEmployees, setLateEmployees] = useState<any[]>([]);
+  const [absentEmployees, setAbsentEmployees] = useState<any[]>([]);
+  const [systemSettings, setSystemSettings] = useState<any>({});
   const [showWarningModal, setShowWarningModal] = useState(false);
-  const [selectedEmployee, setSelectedEmployee] = useState(null);
+  const [selectedEmployee, setSelectedEmployee] = useState<any | null>(null);
   const [showEmployeeDetail, setShowEmployeeDetail] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
@@ -260,18 +261,18 @@ const AdminPanel = () => {
     }
   };
 
-  const handleIssueWarning = (employee) => {
+  const handleIssueWarning = (employee: any) => {
     setSelectedEmployee(employee);
     setShowWarningModal(true);
   };
 
-  const handleWarningGenerated = async (warningLetter) => {
+  const handleWarningGenerated = async (warningLetter: any) => {
     setShowWarningModal(false);
     await Swal.fire({ icon: 'success', title: 'Surat Peringatan', text: `Surat peringatan ${warningLetter.warning_type} berhasil dibuat dan dikirim ke ${selectedEmployee.name}` });
     fetchDashboardData();
   };
 
-  const handleViewEmployee = async (employee) => {
+  const handleViewEmployee = async (employee: any) => {
     if (employee) {
       setSelectedEmployee(employee);
       setShowEmployeeDetail(true);
@@ -281,7 +282,7 @@ const AdminPanel = () => {
     }
   };
 
-  const sendNotificationToEmployee = async (employeeId, type, title, message) => {
+  const sendNotificationToEmployee = async (employeeId: string, type: string, title: string, message: string) => {
     try {
       await supabase.from('notifications').insert([{
         user_id: employeeId,
@@ -300,7 +301,7 @@ const AdminPanel = () => {
     }
   };
 
-  const handleSendLateWarning = async (employee) => {
+  const handleSendLateWarning = async (employee: any) => {
     try {
       await sendNotificationToEmployee(
         employee.user_id || employee.id,
@@ -314,7 +315,7 @@ const AdminPanel = () => {
     }
   };
 
-  const handleSendAbsentWarning = async (employee) => {
+  const handleSendAbsentWarning = async (employee: any) => {
     try {
       await sendNotificationToEmployee(
         employee.id,
@@ -328,7 +329,7 @@ const AdminPanel = () => {
     }
   };
 
-  const getRoleDisplayName = (role) => {
+  const getRoleDisplayName = (role: string) => {
     switch (role) {
       case 'admin':
         return 'Administrator';
@@ -339,7 +340,7 @@ const AdminPanel = () => {
     }
   };
 
-  const getRoleColor = (role) => {
+  const getRoleColor = (role: string) => {
     switch (role) {
       case 'admin':
         return 'bg-blue-100 text-blue-800';
@@ -348,7 +349,7 @@ const AdminPanel = () => {
     }
   };
 
-  const getStatusColor = (status) => {
+  const getStatusColor = (status: string) => {
     switch (status) {
       case 'berhasil':
         return 'text-green-600 bg-green-100';
@@ -363,7 +364,7 @@ const AdminPanel = () => {
     }
   };
 
-  const getStatusIcon = (status) => {
+  const getStatusIcon = (status: string) => {
     switch (status) {
       case 'berhasil':
         return <CheckCircle className="h-4 w-4" />;
@@ -377,7 +378,7 @@ const AdminPanel = () => {
     }
   };
 
-  const formatDateTime = (timestamp) => {
+  const formatDateTime = (timestamp: string) => {
     return new Date(timestamp).toLocaleString('id-ID', {
       day: '2-digit',
       month: 'short',
@@ -386,7 +387,7 @@ const AdminPanel = () => {
     });
   };
 
-  const formatCurrency = (amount) => {
+  const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('id-ID', {
       style: 'currency',
       currency: 'IDR',
@@ -430,229 +431,214 @@ const AdminPanel = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex font-sans">
-      {/* Sidebar */}
-      <AdminSidebar 
-        user={user} 
-        profile={profile} 
-        isCollapsed={isCollapsed} 
-        setIsCollapsed={setIsCollapsed} 
-      />
+    <>
+      {/* Header */}
+      <div className="bg-white shadow-lg border-b fixed top-0 left-0 right-0 lg:relative z-30">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between py-4 lg:py-5">
+            <div>
+              <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900">Dashboard Admin</h1>
+              <p className="hidden sm:block text-sm text-gray-600 mt-1">
+                Pantau aktivitas dan kelola sistem dengan mudah
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
 
-      {/* Main Content */}
-      <div 
-        className={`flex-1 transition-all duration-300 ease-in-out 
-          ${isCollapsed ? 'lg:ml-20' : 'lg:ml-64'} 
-          pt-16 lg:pt-0`}
-      >
-        {/* Header */}
-        <div className="bg-white shadow-lg border-b fixed top-0 left-0 right-0 lg:relative z-30">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center justify-between py-4 lg:py-5">
-              <div>
-                <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900">Dashboard Admin</h1>
-                <p className="hidden sm:block text-sm text-gray-600 mt-1">
-                  Pantau aktivitas dan kelola sistem dengan mudah
-                </p>
-              </div>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Stats Cards */}
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          <StatCard
+            icon={Users}
+            title="Total Karyawan"
+            value={stats.totalUsers}
+            footer={`${stats.activeUsers} aktif`}
+            color="blue"
+          />
+          <StatCard
+            icon={CheckCircle}
+            title="Hadir Hari Ini"
+            value={stats.todayAttendance}
+            footer={`${stats.absentToday} absen`}
+            color="green"
+          />
+          <StatCard
+            icon={AlertTriangle}
+            title="Terlambat"
+            value={stats.lateEmployees}
+            footer="Hari ini"
+            color="orange"
+          />
+        </div>
+
+        {/* Charts */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+          <div className="bg-white rounded-2xl shadow-lg p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Statistik Absensi</h2>
+            <div className="h-64">
+              <Bar
+                data={attendanceChartData}
+                options={{
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  plugins: {
+                    legend: { position: 'top' },
+                    title: { display: true, text: 'Statistik Absensi Harian' }
+                  }
+                }}
+              />
+            </div>
+          </div>
+          <div className="bg-white rounded-2xl shadow-lg p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Distribusi Organisasi</h2>
+            <div className="h-64">
+              <Pie
+                data={departmentChartData}
+                options={{
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  plugins: {
+                    legend: { position: 'top' },
+                    title: { display: true, text: 'Struktur Organisasi' }
+                  }
+                }}
+              />
             </div>
           </div>
         </div>
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {/* Stats Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-            <StatCard
-              icon={Users}
-              title="Total Karyawan"
-              value={stats.totalUsers}
-              footer={`${stats.activeUsers} aktif`}
-              color="blue"
-            />
-            <StatCard
-              icon={CheckCircle}
-              title="Hadir Hari Ini"
-              value={stats.todayAttendance}
-              footer={`${stats.absentToday} absen`}
-              color="green"
-            />
-            <StatCard
-              icon={AlertTriangle}
-              title="Terlambat"
-              value={stats.lateEmployees}
-              footer="Hari ini"
-              color="orange"
-            />
-          </div>
-
-          {/* Charts */}
+        {/* Employee Status */}
+        {(lateEmployees.length > 0 || absentEmployees.length > 0) && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-            <div className="bg-white rounded-2xl shadow-lg p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Statistik Absensi</h2>
-              <div className="h-64">
-                <Bar
-                  data={attendanceChartData}
-                  options={{
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                      legend: { position: 'top' },
-                      title: { display: true, text: 'Statistik Absensi Harian' }
-                    }
-                  }}
-                />
+            {lateEmployees.length > 0 && (
+              <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
+                <div className="px-6 py-4 bg-orange-50">
+                  <h2 className="text-lg font-semibold text-orange-900">
+                    Karyawan Terlambat ({lateEmployees.length})
+                  </h2>
+                </div>
+                <div className="p-6 max-h-96 overflow-y-auto">
+                  <div className="space-y-4">
+                    {lateEmployees.slice(0, 5).map((record) => (
+                      <div key={record.id} className="flex items-center justify-between p-4 bg-orange-50 rounded-lg hover:bg-orange-100 transition-colors">
+                        <div className="flex items-center space-x-4">
+                          <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center">
+                            <User className="h-5 w-5 text-orange-600" />
+                          </div>
+                          <div>
+                            <p className="font-medium text-gray-900 text-sm">{record.profiles?.name}</p>
+                            <p className="text-xs text-gray-600">Terlambat {record.late_minutes} menit</p>
+                          </div>
+                        </div>
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={() => handleViewEmployee(record.profiles)}
+                            className="p-2 text-blue-600 hover:bg-blue-100 rounded-full"
+                            title="Lihat Detail"
+                          >
+                            <Eye className="h-5 w-5" />
+                          </button>
+                          <button
+                            onClick={() => handleSendLateWarning(record)}
+                            className="p-2 text-orange-600 hover:bg-orange-100 rounded-full"
+                            title="Kirim Peringatan"
+                          >
+                            <Bell className="h-5 w-5" />
+                          </button>
+                          <button
+                            onClick={() => handleIssueWarning(record.profiles)}
+                            className="p-2 text-red-600 hover:bg-red-100 rounded-full"
+                            title="Buat SP"
+                          >
+                            <FileText className="h-5 w-5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
-            </div>
-            <div className="bg-white rounded-2xl shadow-lg p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Distribusi Organisasi</h2>
-              <div className="h-64">
-                <Pie
-                  data={departmentChartData}
-                  options={{
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                      legend: { position: 'top' },
-                      title: { display: true, text: 'Struktur Organisasi' }
-                    }
-                  }}
-                />
+            )}
+
+            {absentEmployees.length > 0 && (
+              <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
+                <div className="px-6 py-4 bg-red-50">
+                  <h2 className="text-lg font-semibold text-red-900">
+                    Karyawan Absen ({absentEmployees.length})
+                  </h2>
+                </div>
+                <div className="p-6 max-h-96 overflow-y-auto">
+                  <div className="space-y-4">
+                    {absentEmployees.slice(0, 5).map((employee) => (
+                      <div key={employee.id} className="flex items-center justify-between p-4 bg-red-50 rounded-lg hover:bg-red-100 transition-colors">
+                        <div className="flex items-center space-x-4">
+                          <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
+                            <User className="h-5 w-5 text-red-600" />
+                          </div>
+                          <div>
+                            <p className="font-medium text-gray-900 text-sm">{employee.name}</p>
+                            <p className="text-xs text-gray-600">{employee.department || 'Tidak ada departemen'}</p>
+                          </div>
+                        </div>
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={() => handleViewEmployee(employee)}
+                            className="p-2 text-blue-600 hover:bg-blue-100 rounded-full"
+                            title="Lihat Detail"
+                          >
+                            <Eye className="h-5 w-5" />
+                          </button>
+                          <button
+                            onClick={() => handleSendAbsentWarning(employee)}
+                            className="p-2 text-red-600 hover:bg-red-100 rounded-full"
+                            title="Kirim Peringatan"
+                          >
+                            <Bell className="h-5 w-5" />
+                          </button>
+                          <button
+                            onClick={() => handleIssueWarning(employee)}
+                            className="p-2 text-red-600 hover:bg-red-100 rounded-full"
+                            title="Buat SP"
+                          >
+                            <FileText className="h-5 w-5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
-            </div>
+            )}
           </div>
+        )}
 
-          {/* Employee Status */}
-          {(lateEmployees.length > 0 || absentEmployees.length > 0) && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-              {lateEmployees.length > 0 && (
-                <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
-                  <div className="px-6 py-4 bg-orange-50">
-                    <h2 className="text-lg font-semibold text-orange-900">
-                      Karyawan Terlambat ({lateEmployees.length})
-                    </h2>
-                  </div>
-                  <div className="p-6 max-h-96 overflow-y-auto">
-                    <div className="space-y-4">
-                      {lateEmployees.slice(0, 5).map((record) => (
-                        <div key={record.id} className="flex items-center justify-between p-4 bg-orange-50 rounded-lg hover:bg-orange-100 transition-colors">
-                          <div className="flex items-center space-x-4">
-                            <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center">
-                              <User className="h-5 w-5 text-orange-600" />
-                            </div>
-                            <div>
-                              <p className="font-medium text-gray-900 text-sm">{record.profiles?.name}</p>
-                              <p className="text-xs text-gray-600">Terlambat {record.late_minutes} menit</p>
-                            </div>
-                          </div>
-                          <div className="flex space-x-2">
-                            <button
-                              onClick={() => handleViewEmployee(record.profiles)}
-                              className="p-2 text-blue-600 hover:bg-blue-100 rounded-full"
-                              title="Lihat Detail"
-                            >
-                              <Eye className="h-5 w-5" />
-                            </button>
-                            <button
-                              onClick={() => handleSendLateWarning(record)}
-                              className="p-2 text-orange-600 hover:bg-orange-100 rounded-full"
-                              title="Kirim Peringatan"
-                            >
-                              <Bell className="h-5 w-5" />
-                            </button>
-                            <button
-                              onClick={() => handleIssueWarning(record.profiles)}
-                              className="p-2 text-red-600 hover:bg-red-100 rounded-full"
-                              title="Buat SP"
-                            >
-                              <FileText className="h-5 w-5" />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {absentEmployees.length > 0 && (
-                <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
-                  <div className="px-6 py-4 bg-red-50">
-                    <h2 className="text-lg font-semibold text-red-900">
-                      Karyawan Absen ({absentEmployees.length})
-                    </h2>
-                  </div>
-                  <div className="p-6 max-h-96 overflow-y-auto">
-                    <div className="space-y-4">
-                      {absentEmployees.slice(0, 5).map((employee) => (
-                        <div key={employee.id} className="flex items-center justify-between p-4 bg-red-50 rounded-lg hover:bg-red-100 transition-colors">
-                          <div className="flex items-center space-x-4">
-                            <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
-                              <User className="h-5 w-5 text-red-600" />
-                            </div>
-                            <div>
-                              <p className="font-medium text-gray-900 text-sm">{employee.name}</p>
-                              <p className="text-xs text-gray-600">{employee.department || 'Tidak ada departemen'}</p>
-                            </div>
-                          </div>
-                          <div className="flex space-x-2">
-                            <button
-                              onClick={() => handleViewEmployee(employee)}
-                              className="p-2 text-blue-600 hover:bg-blue-100 rounded-full"
-                              title="Lihat Detail"
-                            >
-                              <Eye className="h-5 w-5" />
-                            </button>
-                            <button
-                              onClick={() => handleSendAbsentWarning(employee)}
-                              className="p-2 text-red-600 hover:bg-red-100 rounded-full"
-                              title="Kirim Peringatan"
-                            >
-                              <Bell className="h-5 w-5" />
-                            </button>
-                            <button
-                              onClick={() => handleIssueWarning(employee)}
-                              className="p-2 text-red-600 hover:bg-red-100 rounded-full"
-                              title="Buat SP"
-                            >
-                              <FileText className="h-5 w-5" />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* System Information */}
-          <div className="bg-white rounded-2xl shadow-lg p-6">
-            <div className="flex items-center space-x-2 mb-4">
-              <Database className="h-6 w-6 text-blue-600" />
-              <h2 className="text-lg font-semibold text-gray-900">Informasi Sistem</h2>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="flex items-center space-x-3 p-4 bg-blue-50 rounded-lg">
-                <Database className="h-8 w-8 text-blue-600" />
-                <div>
-                  <p className="font-medium text-gray-900 text-sm">Database</p>
-                  <p className="text-xs text-gray-600">Supabase PostgreSQL</p>
-                </div>
+        {/* System Information */}
+        <div className="bg-white rounded-2xl shadow-lg p-6">
+          <div className="flex items-center space-x-2 mb-4">
+            <Database className="h-6 w-6 text-blue-600" />
+            <h2 className="text-lg font-semibold text-gray-900">Informasi Sistem</h2>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="flex items-center space-x-3 p-4 bg-blue-50 rounded-lg">
+              <Database className="h-8 w-8 text-blue-600" />
+              <div>
+                <p className="font-medium text-gray-900 text-sm">Database</p>
+                <p className="text-xs text-gray-600">Supabase PostgreSQL</p>
               </div>
-              <div className="flex items-center space-x-3 p-4 bg-purple-50 rounded-lg">
-                <MapPin className="h-8 w-8 text-purple-600" />
-                <div>
-                  <p className="font-medium text-gray-900 text-sm">Radius Kantor</p>
-                  <p className="text-xs text-gray-600">{systemSettings.office_location?.radius || 100} meter</p>
-                </div>
+            </div>
+            <div className="flex items-center space-x-3 p-4 bg-purple-50 rounded-lg">
+              <MapPin className="h-8 w-8 text-purple-600" />
+              <div>
+                <p className="font-medium text-gray-900 text-sm">Radius Kantor</p>
+                <p className="text-xs text-gray-600">{systemSettings.office_location?.radius || 100} meter</p>
               </div>
-              <div className="flex items-center space-x-3 p-4 bg-orange-50 rounded-lg">
-                <Camera className="h-8 w-8 text-orange-600" />
-                <div>
-                  <p className="font-medium text-gray-900 text-sm">Verifikasi Wajah</p>
-                  <p className="text-xs text-gray-600">{cameraSettings.enabled ? 'Aktif' : 'Nonaktif'}</p>
-                </div>
+            </div>
+            <div className="flex items-center space-x-3 p-4 bg-orange-50 rounded-lg">
+              <Camera className="h-8 w-8 text-orange-600" />
+              <div>
+                <p className="font-medium text-gray-900 text-sm">Verifikasi Wajah</p>
+                <p className="text-xs text-gray-600">{cameraSettings.enabled ? 'Aktif' : 'Nonaktif'}</p>
               </div>
             </div>
           </div>
@@ -804,33 +790,8 @@ const AdminPanel = () => {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 };
 
-const StatCard = ({ icon: Icon, title, value, footer, color }) => {
-  const colors = {
-    blue: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
-    green: { bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200' },
-    orange: { bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200' },
-    red: { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200' },
-  };
-  const selectedColor = colors[color] || colors.blue;
-
-  return (
-    <div className="bg-white rounded-2xl shadow-lg p-4 sm:p-5 border border-gray-100 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
-      <div className="flex items-center">
-        <div className={`w-10 h-10 sm:w-12 sm:h-12 ${selectedColor.bg} ${selectedColor.border} rounded-xl flex items-center justify-center`}>
-          <Icon className={`h-5 w-5 sm:h-6 sm:w-6 ${selectedColor.text}`} />
-        </div>
-        <div className="ml-3 sm:ml-4">
-          <p className="text-xs sm:text-sm font-medium text-gray-600">{title}</p>
-          <p className="text-lg sm:text-2xl font-bold text-gray-900">{value}</p>
-          <p className={`text-xs ${selectedColor.text}`}>{footer}</p>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-export default AdminPanel;
+export default AdminDashboardPage;
