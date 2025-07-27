@@ -17,8 +17,16 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { supabase } from '../utils/supabaseClient';
+import { User, Profile } from '../types';
 
-const AdminSidebar = ({ user, profile, isCollapsed, setIsCollapsed }) => {
+interface AdminSidebarProps {
+  user: User | null;
+  profile: Profile | null;
+  isCollapsed: boolean;
+  setIsCollapsed: (isCollapsed: boolean) => void;
+}
+
+const AdminSidebar = ({ user, profile, isCollapsed, setIsCollapsed }: AdminSidebarProps) => {
   const navigate = useNavigate();
   const location = useLocation();
   const [isMobileOpen, setIsMobileOpen] = useState(false);

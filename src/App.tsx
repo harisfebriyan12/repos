@@ -3,9 +3,11 @@ import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavig
 import { supabase } from './utils/supabaseClient';
 import Login from './pages/Login';
 import Register from './pages/Register';
-import Dashboard from './pages/Dashboard';
+import DashboardPage from './pages/DashboardPage';
 import AttendanceHistory from './pages/AttendanceHistory';
-import AdminPanel from './pages/AdminPanel';
+import AdminDashboardPage from './pages/AdminDashboardPage';
+import KaryawanLayout from './layouts/KaryawanLayout';
+import AdminLayout from './layouts/AdminLayout';
 import UserManagement from './pages/UserManagement';
 import SalaryPaymentManagement from './pages/SalaryPaymentManagement';
 import DepartmentManagement from './pages/DepartmentManagement';
@@ -28,10 +30,13 @@ function App() {
   );
 }
 
+import { User, Profile } from './types';
+
 function AppContent() {
-  const [session, setSession] = useState(null);
+  const [session, setSession] = useState<{ user: User } | null>(null);
   const [loading, setLoading] = useState(true);
-  const [userRole, setUserRole] = useState(null);
+  const [userRole, setUserRole] = useState<Profile['role'] | null>(null);
+  const [isCollapsed, setIsCollapsed] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -147,10 +152,12 @@ function AppContent() {
           path="/register" 
           element={!session ? <Register /> : (userRole === 'admin' ? <Navigate to="/admin" replace /> : <Navigate to="/dashboard" replace />)} 
         />
-        <Route 
-          path="/dashboard" 
-          element={session ? (userRole === 'admin' ? <Navigate to="/admin" replace /> : <Dashboard />) : <Navigate to="/login" replace />} 
-        />
+        <Route element={<KaryawanLayout />}>
+          <Route
+            path="/dashboard"
+            element={session ? (userRole === 'admin' ? <Navigate to="/admin" replace /> : <DashboardPage />) : <Navigate to="/login" replace />}
+          />
+        </Route>
         <Route 
           path="/profile-setup" 
           element={session ? <ProfileSetup /> : <Navigate to="/login" replace />} 
@@ -159,10 +166,12 @@ function AppContent() {
           path="/history" 
           element={session ? <AttendanceHistory /> : <Navigate to="/login" replace />} 
         />
-        <Route 
-          path="/admin" 
-          element={session && userRole === 'admin' ? <AdminPanel /> : <Navigate to={session ? "/dashboard" : "/login"} replace />} 
-        />
+        <Route element={<AdminLayout session={session} userRole={userRole} isCollapsed={isCollapsed} setIsCollapsed={setIsCollapsed} />}>
+          <Route
+            path="/admin"
+            element={session && userRole === 'admin' ? <AdminDashboardPage /> : <Navigate to={session ? "/dashboard" : "/login"} replace />}
+          />
+        </Route>
         <Route 
           path="/admin/users" 
           element={session && userRole === 'admin' ? <UserManagement /> : <Navigate to={session ? "/dashboard" : "/login"} replace />} 

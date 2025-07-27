@@ -12,9 +12,22 @@ import { supabase } from '../utils/supabaseClient';
 import AttendanceForm from '../components/AttendanceForm';
 import NotificationSystem from '../components/NotificationSystem';
 import AttendanceHistory from './AttendanceHistory';
+import ProfileEditor from '../features/karyawan/profile/ProfileEditor';
+import StatCard from '../components/ui/StatCard';
+import { User, Profile } from '../types';
 
 // Calendar component (simplified version)
-const ReactCalendar = ({ onChange, value, tileContent, tileClassName, locale, className, prevLabel, nextLabel, navigationLabel }) => {
+const ReactCalendar = ({ onChange, value, tileContent, tileClassName, locale, className, prevLabel, nextLabel, navigationLabel }: {
+  onChange: (date: Date) => void,
+  value: Date,
+  tileContent: ({ date, view }: { date: Date, view: string }) => JSX.Element | null,
+  tileClassName: ({ date, view }: { date: Date, view: string }) => string | null,
+  locale: any,
+  className: string,
+  prevLabel: JSX.Element,
+  nextLabel: JSX.Element,
+  navigationLabel: any,
+}) => {
   const [currentDate, setCurrentDate] = useState(value || new Date());
   
   const handlePrevMonth = () => {
@@ -29,7 +42,7 @@ const ReactCalendar = ({ onChange, value, tileContent, tileClassName, locale, cl
     if (onChange) onChange(newDate);
   };
   
-  const getDaysInMonth = (date) => {
+  const getDaysInMonth = (date: Date) => {
     const year = date.getFullYear();
     const month = date.getMonth();
     const firstDay = new Date(year, month, 1);
@@ -96,13 +109,13 @@ const ReactCalendar = ({ onChange, value, tileContent, tileClassName, locale, cl
   );
 };
 
-const Dashboard = () => {
+const DashboardPage = () => {
   const navigate = useNavigate();
-  const [user, setUser] = useState(null);
-  const [profile, setProfile] = useState(null);
-  const [todayAttendance, setTodayAttendance] = useState([]);
-  const [salaryInfo, setSalaryInfo] = useState(null);
-  const [warnings, setWarnings] = useState([]);
+  const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [todayAttendance, setTodayAttendance] = useState<any[]>([]);
+  const [salaryInfo, setSalaryInfo] = useState<any | null>(null);
+  const [warnings, setWarnings] = useState<any[]>([]);
   const [stats, setStats] = useState({
     thisMonth: 0,
     onTime: 0,
@@ -118,9 +131,9 @@ const Dashboard = () => {
   const [showAttendanceHistory, setShowAttendanceHistory] = useState(false);
   const [cameraVerificationEnabled, setCameraVerificationEnabled] = useState(true);
   const [currentMonth, setCurrentMonth] = useState(new Date());
-  const [calendarAttendance, setCalendarAttendance] = useState({});
+  const [calendarAttendance, setCalendarAttendance] = useState<any>({});
   const [showCalendar, setShowCalendar] = useState(true);
-  const [bankInfo, setBankInfo] = useState(null);
+  const [bankInfo, setBankInfo] = useState<any | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
 
   const isAdmin = useMemo(() => profile?.role === 'admin', [profile?.role]);
@@ -173,7 +186,7 @@ const Dashboard = () => {
     return () => clearInterval(timer);
   }, []);
 
-  const fetchUserProfile = useCallback(async (userId) => {
+  const fetchUserProfile = useCallback(async (userId: string) => {
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -220,7 +233,7 @@ const Dashboard = () => {
     }
   }, [navigate]);
 
-  const fetchSalaryInfo = useCallback(async (userId) => {
+  const fetchSalaryInfo = useCallback(async (userId: string) => {
     try {
       const { data, error } = await supabase
         .from('employee_salaries')
@@ -235,7 +248,7 @@ const Dashboard = () => {
     }
   }, []);
 
-  const fetchBankInfo = useCallback(async (userId) => {
+  const fetchBankInfo = useCallback(async (userId: string) => {
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -254,7 +267,7 @@ const Dashboard = () => {
     }
   }, []);
 
-  const fetchWarnings = useCallback(async (userId) => {
+  const fetchWarnings = useCallback(async (userId: string) => {
     try {
       const { data, error } = await supabase
         .from('attendance_warnings')
@@ -270,7 +283,7 @@ const Dashboard = () => {
     }
   }, []);
 
-  const fetchAttendanceData = useCallback(async (userId) => {
+  const fetchAttendanceData = useCallback(async (userId: string) => {
     try {
       const today = new Date().toISOString().split('T')[0];
       const { data: todayData, error: todayError } = await supabase
@@ -288,7 +301,7 @@ const Dashboard = () => {
     }
   }, []);
 
-  const calculateStats = useCallback(async (todayData, userId) => {
+  const calculateStats = useCallback(async (todayData: any[], userId: string) => {
     try {
       const thisMonth = new Date();
       const startOfThisMonth = startOfMonth(thisMonth);
@@ -366,7 +379,7 @@ const Dashboard = () => {
     }
   }, [navigate]);
 
-  const handleAttendanceSubmitted = useCallback((newRecord) => {
+  const handleAttendanceSubmitted = useCallback((newRecord: any) => {
     setTodayAttendance(prev => [newRecord, ...prev]);
     setShowAttendanceForm(false);
     if (user) fetchAttendanceData(user.id);
@@ -376,7 +389,7 @@ const Dashboard = () => {
     setCameraVerificationEnabled(true);
   }, []);
 
-  const fetchMonthlyAttendance = useCallback(async (userId, date) => {
+  const fetchMonthlyAttendance = useCallback(async (userId: string, date: Date) => {
     try {
       const startDate = startOfMonth(date);
       const endDate = endOfMonth(date);
@@ -401,7 +414,7 @@ const Dashboard = () => {
     }
   }, []);
 
-  const handleMonthChange = useCallback((date) => {
+  const handleMonthChange = useCallback((date: Date) => {
     setCurrentMonth(date);
     if (user) fetchMonthlyAttendance(user.id, date);
   }, [user, fetchMonthlyAttendance]);
@@ -424,7 +437,7 @@ const Dashboard = () => {
     setShowAttendanceForm(true);
   }, [profile?.is_face_registered, todayAttendance, cameraVerificationEnabled]);
 
-  const tileContent = ({ date, view }) => {
+  const tileContent = ({ date, view }: { date: Date, view: string }) => {
     if (view !== 'month') return null;
     const dateStr = format(date, 'yyyy-MM-dd');
     const records = calendarAttendance[dateStr] || [];
@@ -446,7 +459,7 @@ const Dashboard = () => {
     return null;
   };
 
-  const tileClassName = ({ date, view }) => {
+  const tileClassName = ({ date, view }: { date: Date, view: string }) => {
     if (view !== 'month') return '';
     const dateStr = format(date, 'yyyy-MM-dd');
     const records = calendarAttendance[dateStr] || [];
@@ -459,7 +472,7 @@ const Dashboard = () => {
     return '';
   };
 
-  const getStatusColor = useCallback((status) => {
+  const getStatusColor = useCallback((status: string) => {
     switch (status) {
       case 'berhasil': return 'text-green-600 bg-green-100';
       case 'wajah_tidak_valid': return 'text-red-600 bg-red-100';
@@ -468,7 +481,7 @@ const Dashboard = () => {
     }
   }, []);
 
-  const getStatusIcon = useCallback((status) => {
+  const getStatusIcon = useCallback((status: string) => {
     switch (status) {
       case 'berhasil': return <CheckCircle className="h-3 w-3" />;
       case 'wajah_tidak_valid':
@@ -477,7 +490,7 @@ const Dashboard = () => {
     }
   }, []);
 
-  const getRoleDisplayName = useCallback((role) => {
+  const getRoleDisplayName = useCallback((role: string) => {
     switch (role) {
       case 'karyawan': return 'Karyawan';
       case 'admin': return 'Administrator';
@@ -485,7 +498,7 @@ const Dashboard = () => {
     }
   }, []);
 
-  const getWarningColor = useCallback((level) => {
+  const getWarningColor = useCallback((level: number) => {
     switch (level) {
       case 1: return 'bg-yellow-100 text-yellow-800 border-yellow-200';
       case 2: return 'bg-orange-100 text-orange-800 border-orange-200';
@@ -494,14 +507,14 @@ const Dashboard = () => {
     }
   }, []);
 
-  const formatTime = useCallback((timestamp) => {
+  const formatTime = useCallback((timestamp: string) => {
     return new Date(timestamp).toLocaleTimeString('id-ID', {
       hour: '2-digit',
       minute: '2-digit'
     });
   }, []);
 
-  const formatCurrency = useCallback((amount) => {
+  const formatCurrency = useCallback((amount: number) => {
     return new Intl.NumberFormat('id-ID', {
       style: 'currency',
       currency: 'IDR',
@@ -529,7 +542,7 @@ const Dashboard = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 flex flex-col">
+    <div className="min-h-screen bg-blue-50 flex flex-col">
       {/* Header */}
       <div className="bg-white shadow-md border-b sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -653,10 +666,10 @@ const Dashboard = () => {
 
         {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-          <StatCardMini icon={Calendar} title="Hadir" value={`${stats.thisMonth} hari`} color="blue" />
-          <StatCardMini icon={CheckCircle} title="Tepat Waktu" value={`${stats.onTime} hari`} color="green" />
-          <StatCardMini icon={AlertTriangle} title="Terlambat" value={`${stats.late} hari`} color="orange" />
-          <StatCardMini icon={XCircle} title="Tidak Hadir" value={`${stats.absent} hari`} color="red" />
+          <StatCard icon={Calendar} title="Hadir" value={`${stats.thisMonth} hari`} color="blue" />
+          <StatCard icon={CheckCircle} title="Tepat Waktu" value={`${stats.onTime} hari`} color="green" />
+          <StatCard icon={AlertTriangle} title="Terlambat" value={`${stats.late} hari`} color="orange" />
+          <StatCard icon={XCircle} title="Tidak Hadir" value={`${stats.absent} hari`} color="red" />
         </div>
 
         {/* Bank Info Card */}
@@ -879,332 +892,4 @@ const Dashboard = () => {
   );
 };
 
-const StatCardMini = ({ icon: Icon, title, value, color }) => {
-  const colors = {
-    blue: { bg: 'bg-blue-100', text: 'text-blue-600', gradient: 'bg-gradient-to-r from-blue-600 to-blue-700' },
-    green: { bg: 'bg-green-100', text: 'text-green-600', gradient: 'bg-gradient-to-r from-green-500 to-emerald-600' },
-    orange: { bg: 'bg-orange-100', text: 'text-orange-600', gradient: 'bg-gradient-to-r from-orange-500 to-amber-600' },
-    red: { bg: 'bg-red-100', text: 'text-red-600', gradient: 'bg-gradient-to-r from-red-500 to-rose-600' },
-  };
-  const selectedColor = colors[color] || colors.blue;
-
-  return (
-    <div className="bg-white rounded-lg shadow-sm p-3 hover:shadow-md transition-all duration-200 transform hover:scale-[1.02]">
-      <div className="flex items-center space-x-2">
-        <div className={`w-8 h-8 ${selectedColor.gradient} rounded-md flex items-center justify-center flex-shrink-0 shadow-sm`}>
-          <Icon className="h-4 w-4 text-white" />
-        </div>
-        <div className="overflow-hidden">
-          <p className="text-[0.65rem] font-medium text-gray-600 truncate">{title}</p>
-          <p className="text-sm font-bold text-gray-900 truncate">{value}</p>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const ProfileEditor = ({ user, profile, onClose }) => {
-  const [activeTab, setActiveTab] = useState('profile');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [banks, setBanks] = useState([]);
-  const [profileData, setProfileData] = useState({
-    name: profile?.name || '',
-    full_name: profile?.full_name || '',
-    phone: profile?.phone || '',
-    location: profile?.location || '',
-    bio: profile?.bio || ''
-  });
-  const [bankData, setBankData] = useState({
-    bank_id: profile?.bank_id || '',
-    bank_account_number: profile?.bank_account_number || '',
-    bank_account_name: profile?.bank_account_name || profile?.full_name || ''
-  });
-  const [selectedBank, setSelectedBank] = useState(null);
-  const [passwordData, setPasswordData] = useState({ newPassword: '', confirmPassword: '' });
-
-  useEffect(() => {
-    const fetchBanks = async () => {
-      try {
-        const { data, error } = await supabase.from('bank_info').select('*').eq('is_active', true).order('bank_name');
-        if (error) throw error;
-        setBanks(data || []);
-      } catch (error) {
-        console.error('Error fetching banks:', error);
-      }
-    };
-    fetchBanks();
-  }, []);
-
-  useEffect(() => {
-    if (banks.length > 0 && bankData.bank_id) {
-      const bank = banks.find(bank => bank.id === bankData.bank_id);
-      setSelectedBank(bank);
-    }
-  }, [banks, bankData.bank_id]);
-
-  const handleSaveProfile = async (e) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-    try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({
-          full_name: profileData.full_name,
-          phone: profileData.phone,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', user.id);
-      if (error) throw error;
-      await Swal.fire({ icon: 'success', title: 'Berhasil', text: 'Profil berhasil diperbarui!' });
-      onClose();
-    } catch (err) {
-      await Swal.fire({ icon: 'error', title: 'Gagal', text: err.message || 'Gagal memperbarui profil.' });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleSaveBank = async (e) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-    try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({
-          bank_id: bankData.bank_id,
-          bank_account_number: bankData.bank_account_number,
-          bank_account_name: bankData.bank_account_name,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', user.id);
-      if (error) throw error;
-      await Swal.fire({ icon: 'success', title: 'Berhasil', text: 'Data bank berhasil diperbarui!' });
-      onClose();
-    } catch (err) {
-      await Swal.fire({ icon: 'error', title: 'Gagal', text: err.message || 'Gagal memperbarui data bank.' });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleChangePassword = async (e) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-    if (passwordData.newPassword !== passwordData.confirmPassword) {
-      await Swal.fire({ icon: 'error', title: 'Gagal', text: 'Password dan konfirmasi tidak sama.' });
-      setIsSubmitting(false);
-      return;
-    }
-    try {
-      const { error } = await supabase.auth.updateUser({ password: passwordData.newPassword });
-      if (error) throw error;
-      await Swal.fire({ icon: 'success', title: 'Berhasil', text: 'Password berhasil diubah!' });
-      setPasswordData({ newPassword: '', confirmPassword: '' });
-      onClose();
-    } catch (err) {
-      await Swal.fire({ icon: 'error', title: 'Gagal', text: err.message || 'Gagal mengubah password.' });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] flex flex-col animate-fade-in">
-        <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50 rounded-t-xl">
-          <h2 className="text-lg font-bold text-gray-800">Kelola Profil</h2>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-full hover:bg-gray-100 transition-colors duration-200"
-            aria-label="Tutup"
-          >
-            <XCircle className="h-5 w-5 text-gray-600" />
-          </button>
-        </div>
-        
-        <div className="flex border-b border-gray-100">
-          {[
-            { key: 'profile', label: 'Profil', icon: User },
-            { key: 'bank', label: 'Bank', icon: CreditCard },
-            { key: 'password', label: 'Password', icon: Settings }
-          ].map(({ key, label, icon: Icon }) => (
-            <button
-              key={key}
-              className={`flex-1 px-3 py-3 text-xs font-medium transition-all duration-200 flex items-center justify-center space-x-1 ${
-                activeTab === key
-                  ? 'border-b-2 border-blue-600 text-blue-600 bg-blue-50'
-                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-              }`}
-              onClick={() => setActiveTab(key)}
-            >
-              <Icon className="h-3 w-3" />
-              <span>{label}</span>
-            </button>
-          ))}
-        </div>
-        
-        <div className="p-4 flex-1 overflow-y-auto">
-          {activeTab === 'profile' && (
-            <form onSubmit={handleSaveProfile} className="space-y-4 animate-fade-in">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Nama Lengkap</label>
-                <input
-                  type="text"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 text-sm"
-                  value={profileData.full_name}
-                  onChange={e => setProfileData({ ...profileData, full_name: e.target.value })}
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
-                <input
-                  type="email"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 bg-gray-100 text-gray-500 cursor-not-allowed text-sm"
-                  value={profile?.email || ''}
-                  disabled
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">No. Telepon</label>
-                <input
-                  type="tel"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 text-sm"
-                  value={profileData.phone}
-                  onChange={e => setProfileData({ ...profileData, phone: e.target.value })}
-                  placeholder="Masukkan nomor telepon"
-                />
-              </div>
-            </form>
-          )}
-          
-          {activeTab === 'bank' && (
-            <div className="space-y-4 animate-fade-in">
-              <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                <div className="flex items-center space-x-2 mb-2">
-                  <CreditCard className="h-5 w-5 text-blue-600" />
-                  <h3 className="font-semibold text-blue-800">Informasi Bank</h3>
-                </div>
-                <p className="text-sm text-blue-600">Data bank hanya dapat diubah oleh pihak kantor.</p>
-              </div>
-              
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Bank</label>
-                  <div className="w-full border border-gray-300 rounded-lg px-3 py-2 bg-gray-100 text-gray-500 text-sm flex items-center space-x-2">
-                    {selectedBank && (
-                      <img 
-                        src={`/default-bank.png`} 
-                        alt={selectedBank.bank_name}
-                        className="w-6 h-6 object-contain"
-                        onError={(e) => {
-                          e.target.style.display = 'none';
-                        }}
-                      />
-                    )}
-                    <span>{selectedBank?.bank_name || 'Belum ada bank terdaftar'}</span>
-                  </div>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Nomor Rekening</label>
-                  <input
-                    type="text"
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 bg-gray-100 text-gray-500 cursor-not-allowed text-sm"
-                    value={bankData.bank_account_number || '-'}
-                    disabled
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Nama Pemilik Rekening</label>
-                  <input
-                    type="text"
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 bg-gray-100 text-gray-500 cursor-not-allowed text-sm"
-                    value={bankData.bank_account_name || '-'}
-                    disabled
-                  />
-                </div>
-                
-                <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-200">
-                  <div className="flex items-start space-x-2">
-                    <AlertTriangle className="h-4 w-4 text-yellow-600 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-sm text-yellow-800 font-medium">Informasi Penting</p>
-                      <p className="text-xs text-yellow-700 mt-1">
-                        Data bank hanya dapat diubah oleh bagian HRD untuk keamanan. Hubungi HRD jika perlu mengubah data bank.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-          
-          {activeTab === 'password' && (
-            <form onSubmit={handleChangePassword} className="space-y-4 animate-fade-in">
-              <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
-                <div className="flex items-center space-x-2 mb-2">
-                  <Settings className="h-5 w-5 text-blue-600" />
-                  <h3 className="font-semibold text-blue-600">Keamanan Akun</h3>
-                </div>
-                <p className="text-sm text-blue-600">Ubah password untuk menjaga keamanan akun Anda</p>
-              </div>
-              
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Password Baru</label>
-                <input
-                  type="password" 
-                  class="w-full border border-gray-300 px-3 py-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 text-sm"
-                  value="passwordData.newPassword"
-                  onChange={e => setPasswordData({ ...passwordData, newPassword: e.target.value })}
-                  placeholder="Masukkan password baru"
-                  required
-                />
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">Konfirmasi Password</label>
-                <input
-                  type="password"
-                  class="w-full border border-gray-300 px-3 py-2 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 text-sm"
-                  value="passwordData.confirmPassword"
-                  onChange={e => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
-                  placeholder="Ulangi password baru"
-                  required
-                />
-              </div>
-            </form>
-          )}
-        </div>
-        
-        <div class="p-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-3 rounded-b-xl">
-          <button 
-            onClick={onClose}
-            class="px-4 py-2 rounded-lg bg-gray-200 text-gray-800 hover:bg-gray-300 transition-colors duration-200 text-sm font-medium"
-          >
-            {activeTab === 'bank' ? 'Tutup' : 'Batal'}
-          </button>
-          {activeTab === 'profile' && (
-            <button 
-              onClick={handleSaveProfile}
-              className="px-4 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-blue-700 text-white hover:from-blue-700 hover:to-blue-800 transition-colors duration-300 text-sm font-medium shadow-sm"
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? 'Menyimpan...' : 'Simpan'}
-            </button>
-          )}
-          {activeTab === 'password' && (
-            <button 
-              class="px-4 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-blue-700 text-white hover:from-blue-700 hover:to-blue-800 transition-colors duration-300 text-sm font-medium shadow-md"
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? 'Menyimpan...' : 'Ubah Password'}
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-export default Dashboard;
+export default DashboardPage;
