@@ -9,33 +9,71 @@ import {
   X,
   Building,
   DollarSign,
-  Users,
+  Briefcase,
   CheckCircle,
   AlertTriangle,
   XCircle,
-  Briefcase
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { supabase } from '../utils/supabaseClient';
 import AdminSidebar from '../components/AdminSidebar';
 
-const PositionManagement = () => {
+// Type definitions
+interface Department {
+  id: string;
+  name: string;
+  is_active: boolean;
+}
+
+interface Position {
+  id: string;
+  name_id: string;
+  name_en: string;
+  description_id: string | null;
+  description_en: string | null;
+  base_salary: number;
+  min_salary: number;
+  max_salary: number;
+  department: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+interface FormData {
+  name_id: string;
+  name_en: string;
+  description_id: string;
+  description_en: string;
+  base_salary: number;
+  min_salary: number;
+  max_salary: number;
+  department: string;
+  is_active: boolean;
+}
+
+const PositionManagement: React.FC = () => {
   const navigate = useNavigate();
-  const [positions, setPositions] = useState([]);
-  const [departments, setDepartments] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [contentLoading, setContentLoading] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterDepartment, setFilterDepartment] = useState('');
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [editingPosition, setEditingPosition] = useState(null);
-  const [error, setError] = useState(null);
-  const [success, setSuccess] = useState(null);
-  const [currentUser, setCurrentUser] = useState(null);
-  const [profile, setProfile] = useState(null);
+  const [positions, setPositions] = useState<Position[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [contentLoading, setContentLoading] = useState<boolean>(false);
+  const [searchTerm, setSearchTerm] = useState<string>('');
+  const [filterDepartment, setFilterDepartment] = useState<string>('');
+  const [showModal, setShowModal] = useState<boolean>(false);
+  const [modalMode, setModalMode] = useState<'add' | 'edit'>('add');
+  const [editingPosition, setEditingPosition] = useState<Position | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [profile, setProfile] = useState<any>(null);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const positionsPerPage = 10;
 
   // Form state
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<FormData>({
     name_id: '',
     name_en: '',
     description_id: '',
@@ -59,22 +97,23 @@ const PositionManagement = () => {
         return;
       }
 
-      const { data: profile } = await supabase
+      const { data: profileData } = await supabase
         .from('profiles')
         .select('role')
         .eq('id', user.id)
         .single();
 
-      if (!profile || profile.role !== 'admin') {
+      if (!profileData || profileData.role !== 'admin') {
         navigate('/dashboard');
         return;
       }
 
       setCurrentUser(user);
-      setProfile(profile);
+      setProfile(profileData);
       await Promise.all([fetchPositions(), fetchDepartments()]);
     } catch (error) {
       console.error('Error checking access:', error);
+      setError('Gagal memeriksa akses pengguna');
       navigate('/login');
     } finally {
       setLoading(false);
@@ -111,10 +150,11 @@ const PositionManagement = () => {
       setDepartments(data || []);
     } catch (error) {
       console.error('Error fetching departments:', error);
+      setError('Gagal memuat data departemen');
     }
   };
 
-  const handleInputChange = (e) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type, checked } = e.target;
     setFormData(prev => ({
       ...prev,
@@ -135,17 +175,19 @@ const PositionManagement = () => {
       is_active: true
     });
     setEditingPosition(null);
-    setShowAddModal(false);
+    setShowModal(false);
+    setModalMode('add');
     setError(null);
+    setSuccess(null);
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
     // Validation
     if (!formData.name_id.trim() || !formData.name_en.trim()) {
-      setError('Nama jabatan (Indonesia dan English) harus diisi');
+      setError('Nama jabatan (Indonesia dan Inggris) harus diisi');
       return;
     }
 
@@ -161,20 +203,20 @@ const PositionManagement = () => {
 
     setContentLoading(true);
     try {
-      const positionData = {
+      const positionData: Partial<Position> = {
         name_id: formData.name_id,
         name_en: formData.name_en,
         description_id: formData.description_id || null,
         description_en: formData.description_en || null,
-        base_salary: parseFloat(formData.base_salary) || 0,
-        min_salary: parseFloat(formData.min_salary) || 0,
-        max_salary: parseFloat(formData.max_salary) || 0,
+        base_salary: parseFloat(formData.base_salary.toString()) || 0,
+        min_salary: parseFloat(formData.min_salary.toString()) || 0,
+        max_salary: parseFloat(formData.max_salary.toString()) || 0,
         department: formData.department,
         is_active: formData.is_active,
         updated_at: new Date().toISOString()
       };
 
-      if (editingPosition) {
+      if (modalMode === 'edit' && editingPosition) {
         // Update existing position
         const { error } = await supabase
           .from('positions')
@@ -182,34 +224,41 @@ const PositionManagement = () => {
           .eq('id', editingPosition.id);
 
         if (error) throw error;
-        setSuccess('Jabatan berhasil diperbarui!');
+        Swal.fire({
+          icon: 'success',
+          title: 'Berhasil',
+          text: `Jabatan "${formData.name_id}" berhasil diperbarui!`
+        });
       } else {
         // Create new position
         positionData.created_at = new Date().toISOString();
-        
         const { error } = await supabase
           .from('positions')
           .insert([positionData]);
 
         if (error) throw error;
-        setSuccess('Jabatan berhasil ditambahkan!');
+        Swal.fire({
+          icon: 'success',
+          title: 'Berhasil',
+          text: `Jabatan "${formData.name_id}" berhasil ditambahkan!`
+        });
       }
 
       resetForm();
       await fetchPositions();
-
-      // Auto-hide success message
-      setTimeout(() => setSuccess(null), 3000);
-
     } catch (error) {
       console.error('Error saving position:', error);
-      setError('Gagal menyimpan jabatan: ' + error.message);
+      Swal.fire({
+        icon: 'error',
+        title: 'Gagal',
+        text: `Gagal menyimpan jabatan: ${error.message}`
+      });
     } finally {
       setContentLoading(false);
     }
   };
 
-  const handleEdit = (position) => {
+  const handleEdit = (position: Position) => {
     setFormData({
       name_id: position.name_id,
       name_en: position.name_en,
@@ -222,13 +271,14 @@ const PositionManagement = () => {
       is_active: position.is_active
     });
     setEditingPosition(position);
-    setShowAddModal(true);
+    setModalMode('edit');
+    setShowModal(true);
   };
 
-  const handleDelete = async (positionId) => {
+  const handleDelete = async (positionId: string, positionName: string) => {
     const result = await Swal.fire({
       title: 'Hapus Jabatan?',
-      text: 'Apakah Anda yakin ingin menghapus jabatan ini?',
+      text: `Apakah Anda yakin ingin menghapus "${positionName}"? Tindakan ini tidak dapat dibatalkan.`,
       icon: 'warning',
       showCancelButton: true,
       confirmButtonColor: '#d33',
@@ -237,10 +287,7 @@ const PositionManagement = () => {
       cancelButtonText: 'Batal'
     });
 
-    if (!result.isConfirmed) {
-      Swal.fire('Dibatalkan', 'Jabatan tidak dihapus.', 'info');
-      return;
-    }
+    if (!result.isConfirmed) return;
 
     setContentLoading(true);
     try {
@@ -254,30 +301,39 @@ const PositionManagement = () => {
       if (checkError) throw checkError;
 
       if (employees && employees.length > 0) {
-        setError('Jabatan tidak dapat dihapus karena masih digunakan oleh karyawan');
+        Swal.fire({
+          icon: 'error',
+          title: 'Gagal',
+          text: 'Jabatan tidak dapat dihapus karena masih digunakan oleh karyawan'
+        });
         return;
       }
 
       const { error } = await supabase
-      .from('positions')
-      .delete()
-      .eq('id', positionId);
-  
+        .from('positions')
+        .delete()
+        .eq('id', positionId);
+
       if (error) throw error;
       await fetchPositions();
-
-      // Auto-hide success message
-      setTimeout(() => setSuccess(null), 3000);
-
+      Swal.fire({
+        icon: 'success',
+        title: 'Berhasil',
+        text: `Jabatan "${positionName}" berhasil dihapus`
+      });
     } catch (error) {
       console.error('Error deleting position:', error);
-      setError('Gagal menghapus jabatan: ' + error.message);
+      Swal.fire({
+        icon: 'error',
+        title: 'Gagal',
+        text: `Gagal menghapus jabatan: ${error.message}`
+      });
     } finally {
       setContentLoading(false);
     }
   };
 
-  const formatCurrency = (amount) => {
+  const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('id-ID', {
       style: 'currency',
       currency: 'IDR',
@@ -294,80 +350,76 @@ const PositionManagement = () => {
     return matchesSearch && matchesDepartment;
   });
 
+  const paginatedPositions = filteredPositions.slice((currentPage - 1) * positionsPerPage, currentPage * positionsPerPage);
+  const totalPages = Math.ceil(filteredPositions.length / positionsPerPage);
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
         <div className="text-center">
           <div className="inline-flex space-x-1 text-blue-600">
             <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
             <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
             <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
           </div>
-          <p className="text-gray-600 mt-4">Memuat data jabatan...</p>
+          <p className="text-gray-600 mt-4 text-lg">Memuat...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
-      {/* Sidebar */}
-      <AdminSidebar user={currentUser} profile={profile} />
+    <div className="min-h-screen bg-gray-100 flex">
+      <AdminSidebar user={currentUser} profile={profile} className="w-64 fixed h-screen hidden lg:block" />
 
-      {/* Main Content */}
-      <div className="flex-1 lg:ml-64 transition-all duration-300 ease-in-out">
-        {/* Header */}
-        <div className="bg-white shadow-sm border-b">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center justify-between py-4">
+      <div className="flex-1 lg:ml-64 transition-all duration-300">
+        <div className="bg-white shadow-md border-b">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">Kelola Jabatan</h1>
-                <p className="text-sm text-gray-600">
-                  Tambah, edit, dan kelola jabatan beserta struktur gaji
-                </p>
+                <h1 className="text-2xl font-bold text-gray-900">Manajemen Jabatan</h1>
+                <p className="text-sm text-gray-600 mt-1">Kelola jabatan dan struktur gaji dengan mudah</p>
               </div>
               <button
-                onClick={() => setShowAddModal(true)}
-                className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                onClick={() => { setModalMode('add'); setShowModal(true); }}
+                className="flex items-center justify-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors sm:w-auto w-12 h-12"
               >
-                <Plus className="h-4 w-4" />
-                <span>Tambah Jabatan</span>
+                <Plus className="h-5 w-5 sm:mr-2" />
+                <span className="sm:inline hidden">Tambah Jabatan</span>
               </button>
             </div>
           </div>
         </div>
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {/* Notifications */}
           {success && (
-            <div className="mb-6 p-4 bg-green-50 rounded-lg flex items-start space-x-3">
-              <CheckCircle className="h-5 w-5 text-green-500 flex-shrink-0 mt-0.5" />
-              <p className="text-green-700">{success}</p>
+            <div className="mb-6 p-4 bg-green-50 rounded-lg flex items-center space-x-3 animate-fade-in">
+              <CheckCircle className="h-5 w-5 text-green-500" />
+              <p className="text-green-700 flex-1">{success}</p>
               <button 
                 onClick={() => setSuccess(null)}
-                className="ml-auto text-green-500 hover:text-green-700"
+                className="text-green-500 hover:text-green-700"
               >
-                <XCircle className="h-4 w-4" />
+                <XCircle className="h-5 w-5" />
               </button>
             </div>
           )}
 
           {error && (
-            <div className="mb-6 p-4 bg-red-50 rounded-lg flex items-start space-x-3">
-              <AlertTriangle className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
-              <p className="text-red-700">{error}</p>
+            <div className="mb-6 p-4 bg-red-50 rounded-lg flex items-center space-x-3 animate-fade-in">
+              <AlertTriangle className="h-5 w-5 text-red-500" />
+              <p className="text-red-700 flex-1">{error}</p>
               <button 
                 onClick={() => setError(null)}
-                className="ml-auto text-red-500 hover:text-red-700"
+                className="text-red-500 hover:text-red-700"
               >
-                <XCircle className="h-4 w-4" />
+                <XCircle className="h-5 w-5" />
               </button>
             </div>
           )}
 
-          {/* Stats Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <div className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow">
+            <div className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow">
               <div className="flex items-center">
                 <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
                   <Briefcase className="h-6 w-6 text-blue-600" />
@@ -378,22 +430,18 @@ const PositionManagement = () => {
                 </div>
               </div>
             </div>
-
-            <div className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow">
+            <div className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow">
               <div className="flex items-center">
                 <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
-                  <Users className="h-6 w-6 text-green-600" />
+                  <Briefcase className="h-6 w-6 text-green-600" />
                 </div>
                 <div className="ml-4">
                   <p className="text-sm font-medium text-gray-600">Jabatan Aktif</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {positions.filter(p => p.is_active).length}
-                  </p>
+                  <p className="text-2xl font-bold text-gray-900">{positions.filter(p => p.is_active).length}</p>
                 </div>
               </div>
             </div>
-
-            <div className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow">
+            <div className="bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-shadow">
               <div className="flex items-center">
                 <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center">
                   <DollarSign className="h-6 w-6 text-purple-600" />
@@ -411,232 +459,245 @@ const PositionManagement = () => {
             </div>
           </div>
 
-          {/* Filter and Search */}
-          <div className="bg-white rounded-lg shadow-md mb-6">
-            <div className="p-6">
-              <div className="flex flex-col sm:flex-row gap-4">
-                <div className="flex-1">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-                    <input
-                      type="text"
-                      placeholder="Cari jabatan atau departemen..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
+          <div className="bg-white rounded-xl shadow-md mb-6 p-6">
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="flex-1">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Cari jabatan atau departemen..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition-all"
+                  />
                 </div>
-                <div className="sm:w-48">
-                  <select
-                    value={filterDepartment}
-                    onChange={(e) => setFilterDepartment(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    <option value="">Semua Departemen</option>
-                    {departments.map(dept => (
-                      <option key={dept.id} value={dept.id}>{dept.name}</option>
-                    ))}
-                  </select>
-                </div>
+              </div>
+              <div className="sm:w-48">
+                <select
+                  value={filterDepartment}
+                  onChange={(e) => setFilterDepartment(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                >
+                  <option value="">Semua Departemen</option>
+                  {departments.map(dept => (
+                    <option key={dept.id} value={dept.id}>{dept.name}</option>
+                  ))}
+                </select>
               </div>
             </div>
           </div>
 
-          {/* Positions Table */}
-          <div className="bg-white rounded-lg shadow-md overflow-hidden">
+          <div className="bg-white rounded-xl shadow-md overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-200">
               <div className="flex items-center space-x-2">
                 <Briefcase className="h-5 w-5 text-blue-600" />
-                <h2 className="text-lg font-medium text-gray-900">
+                <h2 className="text-lg font-semibold text-gray-900">
                   Daftar Jabatan ({filteredPositions.length})
                 </h2>
               </div>
             </div>
-            
-            {contentLoading || filteredPositions.length === 0 ? (
-              <div className="flex items-center justify-center py-12">
+
+            {contentLoading ? (
+              <div className="flex items-center justify-center py-16">
                 <div className="inline-flex space-x-1 text-blue-600">
                   <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
                   <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
                   <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
                 </div>
               </div>
-            ) : filteredPositions.length > 0 ? (
-              <div className="overflow-x-auto sm:overflow-visible">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50 hidden sm:table-header-group">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Jabatan
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Departemen
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Gaji Pokok
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Rentang Gaji
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Status
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Aksi
-                      </th>
-                    </tr>
-                  </thead>                
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {filteredPositions.map((position) => (
-                      <tr key={position.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div>
-                            <div className="text-sm font-medium text-gray-900">
-                              {position.name_id}
-                            </div>
-                            <div className="text-sm text-gray-500">
-                              {position.name_en}
-                            </div>
-                            {position.description_id && (
-                              <div className="text-xs text-gray-400 mt-1">
-                                {position.description_id}
-                              </div>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                            {position.department || 'Tidak ada'}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-medium text-gray-900">
-                            {formatCurrency(position.base_salary || 0)}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">
-                            {formatCurrency(position.min_salary || 0)} - {formatCurrency(position.max_salary || 0)}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            position.is_active 
-                              ? 'bg-green-100 text-green-800' 
-                              : 'bg-red-100 text-red-800'
-                          }`}>
-                            {position.is_active ? 'Aktif' : 'Tidak Aktif'}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                          <div className="flex space-x-2">
-                            <button
-                              onClick={() => handleEdit(position)}
-                              className="text-blue-600 hover:text-blue-900 p-1 hover:bg-blue-50 rounded"
-                              title="Edit Jabatan"
-                            >
-                              <Edit className="h-4 w-4" />
-                            </button>
-                            <button
-                              onClick={() => handleDelete(position.id)}
-                              className="text-red-600 hover:text-red-900 p-1 hover:bg-red-50 rounded"
-                              title="Hapus Jabatan"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </td>
+            ) : paginatedPositions.length === 0 ? (
+              <div className="text-center py-16">
+                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Briefcase className="h-8 w-8 text-gray-400" />
+                </div>
+                <p className="text-gray-600 text-lg font-medium mb-2">Tidak ada jabatan ditemukan</p>
+                <p className="text-gray-500">Sesuaikan pencarian atau tambah jabatan baru</p>
+              </div>
+            ) : (
+              <>
+                <div className="hidden lg:block">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Jabatan
+                        </th>
+                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Departemen
+                        </th>
+                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Gaji Pokok
+                        </th>
+                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Rentang Gaji
+                        </th>
+                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Status
+                        </th>
+                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Aksi
+                        </th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {/* Card view for mobile */}
-                <div className="sm:hidden">
-                  {filteredPositions.map((position) => (
-                    <div key={position.id} className="bg-white rounded-lg shadow-md p-4 mb-4">
-                      <div className="flex items-center space-x-4">
-                        <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                          <Briefcase className="h-5 w-5 text-blue-600" />
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {paginatedPositions.map((position) => (
+                        <tr key={position.id} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div>
+                              <div className="text-sm font-medium text-gray-900">{position.name_id}</div>
+                              <div className="text-sm text-gray-500">{position.name_en}</div>
+                              {position.description_id && (
+                                <div className="text-xs text-gray-400 mt-1">{position.description_id}</div>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                              <Building className="h-4 w-4 mr-1" />
+                              {position.department || 'Tidak ada'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm font-medium text-gray-900">
+                              {formatCurrency(position.base_salary || 0)}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm text-gray-900">
+                              {formatCurrency(position.min_salary || 0)} - {formatCurrency(position.max_salary || 0)}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+                              position.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                            }`}>
+                              {position.is_active ? 'Aktif' : 'Nonaktif'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                            <div className="flex space-x-3">
+                              <button
+                                onClick={() => handleEdit(position)}
+                                className="text-blue-600 hover:text-blue-800 p-2 rounded-full hover:bg-blue-50 transition-colors"
+                                title="Edit Jabatan"
+                              >
+                                <Edit className="h-5 w-5" />
+                              </button>
+                              <button
+                                onClick={() => handleDelete(position.id, position.name_id)}
+                                className="text-red-600 hover:text-red-800 p-2 rounded-full hover:bg-red-50 transition-colors"
+                                title="Hapus Jabatan"
+                              >
+                                <Trash2 className="h-5 w-5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="lg:hidden p-6 space-y-6">
+                  {paginatedPositions.map((position) => (
+                    <div key={position.id} className="bg-white rounded-xl shadow-md p-6 border border-gray-100 transition-transform hover:scale-[1.01]">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center space-x-4">
+                          <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                            <Briefcase className="h-6 w-6 text-blue-600" />
+                          </div>
+                          <div>
+                            <p className="text-base font-semibold text-gray-900">{position.name_id}</p>
+                            <p className="text-sm text-gray-600">{position.name_en}</p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-900">
-                            {position.name_id}
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            {position.name_en}
-                          </p>
+                        <div className="flex space-x-3">
+                          <button
+                            onClick={() => handleEdit(position)}
+                            className="text-blue-600 hover:text-blue-800 p-2 rounded-full hover:bg-blue-50"
+                          >
+                            <Edit className="h-6 w-6" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(position.id, position.name_id)}
+                            className="text-red-600 hover:text-red-800 p-2 rounded-full hover:bg-red-50"
+                          >
+                            <Trash2 className="h-6 w-6" />
+                          </button>
                         </div>
                       </div>
-                      <div className="mt-2 text-sm text-gray-700">
+                      <div className="text-sm text-gray-700 space-y-3">
                         <p><span className="font-medium">Departemen:</span> {position.department || 'Tidak ada'}</p>
                         <p><span className="font-medium">Gaji Pokok:</span> {formatCurrency(position.base_salary || 0)}</p>
                         <p><span className="font-medium">Rentang Gaji:</span> {formatCurrency(position.min_salary || 0)} - {formatCurrency(position.max_salary || 0)}</p>
                         {position.description_id && (
-                          <p className="mt-1 text-xs text-gray-500">
-                            {position.description_id}
-                          </p>
+                          <p><span className="font-medium">Deskripsi:</span> {position.description_id}</p>
                         )}
-                        <p className="mt-1 text-xs text-gray-500">
-                          Status: {position.is_active ? 'Aktif' : 'Tidak Aktif'}
+                        <p>
+                          <span className="font-medium">Status:</span>{' '}
+                          <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+                            position.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                          }`}>
+                            {position.is_active ? 'Aktif' : 'Nonaktif'}
+                          </span>
                         </p>
-                      </div>
-                      <div className="mt-2 flex justify-end">
-                        <button
-                          onClick={() => handleEdit(position)}
-                          className="text-blue-600 hover:text-blue-900 p-2 rounded hover:bg-blue-50"
-                        >
-                          <Edit className="h-5 w-5" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(position.id)}
-                          className="text-red-600 hover:text-red-900 p-2 rounded hover:bg-red-50"
-                        >
-                          <Trash2 className="h-5 w-5" />
-                        </button>
                       </div>
                     </div>
                   ))}
                 </div>
-              </div>
-            ) : (
-              <div className="text-center py-12">
-                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Briefcase className="h-8 w-8 text-gray-400" />
-                </div>
-                <p className="text-gray-500 text-lg mb-2">Tidak ada jabatan ditemukan</p>
-                <p className="text-gray-400">Coba sesuaikan pencarian atau tambah jabatan baru</p>
-              </div>
+
+                {totalPages > 1 && (
+                  <div className="flex justify-between items-center px-6 py-4 border-t border-gray-200">
+                    <button
+                      onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                      disabled={currentPage === 1}
+                      className="flex items-center space-x-2 px-4 py-2 text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50"
+                    >
+                      <ChevronLeft className="h-5 w-5" />
+                      <span>Sebelumnya</span>
+                    </button>
+                    <span className="text-sm text-gray-600">
+                      Halaman {currentPage} dari {totalPages}
+                    </span>
+                    <button
+                      onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                      disabled={currentPage === totalPages}
+                      className="flex items-center space-x-2 px-4 py-2 text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50"
+                    >
+                      <span>Berikutnya</span>
+                      <ChevronRight className="h-5 w-5" />
+                    </button>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
       </div>
 
-      {/* Add/Edit Modal */}
-      {showAddModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="max-w-2xl w-full max-h-[90vh] overflow-y-auto bg-white rounded-xl shadow-lg">
+      {showModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
+          <div className="w-full max-w-2xl bg-white rounded-2xl shadow-xl max-h-[90vh] overflow-y-auto">
             <div className="p-6">
-              {/* Header */}
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-xl font-semibold text-gray-900">
-                  {editingPosition ? 'Edit Jabatan' : 'Tambah Jabatan Baru'}
+                  {modalMode === 'edit' ? 'Edit Jabatan' : 'Tambah Jabatan Baru'}
                 </h2>
                 <button
                   onClick={resetForm}
-                  className="text-gray-400 hover:text-gray-600"
+                  className="text-gray-500 hover:text-gray-700 p-2 rounded-full hover:bg-gray-100"
                 >
                   <X className="h-6 w-6" />
                 </button>
               </div>
 
               <form onSubmit={handleSubmit} className="space-y-6">
-                {/* Basic Information */}
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <h3 className="font-medium text-gray-900 mb-4">Informasi Dasar</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-blue-50 p-5 rounded-lg">
+                  <h3 className="font-medium text-blue-900 mb-4">Informasi Dasar</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
                         Nama Jabatan (Indonesia) *
                       </label>
                       <input
@@ -645,13 +706,13 @@ const PositionManagement = () => {
                         value={formData.name_id}
                         onChange={handleInputChange}
                         required
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        placeholder="Contoh: Manager IT"
+                        className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                        placeholder="Contoh: Manajer IT"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Nama Jabatan (English) *
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Nama Jabatan (Inggris) *
                       </label>
                       <input
                         type="text"
@@ -659,14 +720,13 @@ const PositionManagement = () => {
                         value={formData.name_en}
                         onChange={handleInputChange}
                         required
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        placeholder="Example: IT Manager"
+                        className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                        placeholder="Contoh: IT Manager"
                       />
                     </div>
                   </div>
-                  
                   <div className="mt-4">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
                       Departemen *
                     </label>
                     <select
@@ -674,7 +734,7 @@ const PositionManagement = () => {
                       value={formData.department}
                       onChange={handleInputChange}
                       required
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                     >
                       <option value="">Pilih Departemen...</option>
                       {departments.map(dept => (
@@ -684,12 +744,11 @@ const PositionManagement = () => {
                   </div>
                 </div>
 
-                {/* Descriptions */}
-                <div className="bg-blue-50 p-4 rounded-lg">
+                <div className="bg-gray-50 p-5 rounded-lg">
                   <h3 className="font-medium text-gray-900 mb-4">Deskripsi Jabatan</h3>
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
                         Deskripsi (Indonesia)
                       </label>
                       <textarea
@@ -697,32 +756,31 @@ const PositionManagement = () => {
                         value={formData.description_id}
                         onChange={handleInputChange}
                         rows={3}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                         placeholder="Deskripsi tugas dan tanggung jawab..."
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Deskripsi (English)
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Deskripsi (Inggris)
                       </label>
                       <textarea
                         name="description_en"
                         value={formData.description_en}
                         onChange={handleInputChange}
                         rows={3}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                         placeholder="Job description and responsibilities..."
                       />
                     </div>
                   </div>
                 </div>
 
-                {/* Salary Information */}
-                <div className="bg-green-50 p-4 rounded-lg">
-                  <h3 className="font-medium text-gray-900 mb-4">Informasi Gaji</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-green-50 p-5 rounded-lg">
+                  <h3 className="font-medium text-green-900 mb-4">Informasi Gaji</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
                         Gaji Pokok (IDR)
                       </label>
                       <input
@@ -731,12 +789,12 @@ const PositionManagement = () => {
                         value={formData.base_salary}
                         onChange={handleInputChange}
                         min="0"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                         placeholder="5000000"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
                         Gaji Minimum (IDR)
                       </label>
                       <input
@@ -745,12 +803,12 @@ const PositionManagement = () => {
                         value={formData.min_salary}
                         onChange={handleInputChange}
                         min="0"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                         placeholder="4000000"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
                         Gaji Maksimum (IDR)
                       </label>
                       <input
@@ -759,20 +817,19 @@ const PositionManagement = () => {
                         value={formData.max_salary}
                         onChange={handleInputChange}
                         min="0"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                         placeholder="8000000"
                       />
                     </div>
                   </div>
-                  <div className="mt-3 p-3 bg-white rounded border">
+                  <div className="mt-4 p-4 bg-white rounded-lg border border-gray-200">
                     <div className="text-sm text-gray-600">
-                      <p><strong>Gaji Pokok:</strong> {formatCurrency(formData.base_salary || 0)}</p>
-                      <p><strong>Rentang:</strong> {formatCurrency(formData.min_salary || 0)} - {formatCurrency(formData.max_salary || 0)}</p>
+                      <p><span className="font-medium">Gaji Pokok:</span> {formatCurrency(formData.base_salary || 0)}</p>
+                      <p><span className="font-medium">Rentang:</span> {formatCurrency(formData.min_salary || 0)} - {formatCurrency(formData.max_salary || 0)}</p>
                     </div>
                   </div>
                 </div>
 
-                {/* Status */}
                 <div className="flex items-center">
                   <input
                     type="checkbox"
@@ -786,23 +843,35 @@ const PositionManagement = () => {
                   </label>
                 </div>
 
-                {/* Action Buttons */}
-                <div className="flex space-x-3 pt-4">
+                <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-4 pt-4">
                   <button
                     type="button"
                     onClick={resetForm}
-                    className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                    className="flex-1 px-4 py-3 border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
                   >
                     Batal
                   </button>
                   <button
                     type="submit"
                     disabled={contentLoading}
-                    className="flex-1 bg-blue-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    className="flex-1 bg-blue-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
                   >
                     <div className="flex items-center justify-center space-x-2">
-                      <Save className="h-4 w-4" />
-                      <span>{editingPosition ? 'Perbarui Jabatan' : 'Simpan Jabatan'}</span>
+                      {contentLoading ? (
+                        <>
+                          <div className="inline-flex space-x-1">
+                            <div className="w-2 h-2 bg-white rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                            <div className="w-2 h-2 bg-white rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                            <div className="w-2 h-2 bg-white rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                          </div>
+                          <span>Menyimpan...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Save className="h-5 w-5" />
+                          <span>{modalMode === 'edit' ? 'Perbarui Jabatan' : 'Simpan Jabatan'}</span>
+                        </>
+                      )}
                     </div>
                   </button>
                 </div>

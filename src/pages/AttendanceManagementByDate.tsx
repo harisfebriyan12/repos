@@ -17,36 +17,77 @@ import {
   X,
   Bell,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Trash2,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
+import Swal from 'sweetalert2';
 import { supabase } from '../utils/supabaseClient';
 import AdminSidebar from '../components/AdminSidebar';
 
-const AttendanceManagementByDate = () => {
+// Type definitions
+interface Profile {
+  id: string;
+  name: string;
+  email: string;
+  employee_id: string | null;
+  department: string | null;
+  role: string;
+  status: string;
+}
+
+interface Attendance {
+  id: string;
+  user_id: string;
+  type: 'masuk' | 'keluar' | 'absent';
+  timestamp: string;
+  status: 'berhasil' | 'wajah_tidak_valid' | 'lokasi_tidak_valid' | 'tidak_hadir';
+  is_late: boolean;
+  late_minutes: number;
+  work_hours: number;
+  overtime_hours: number;
+  latitude: number | null;
+  longitude: number | null;
+  notes: string | null;
+  profiles: Profile | null;
+}
+
+interface WorkHoursSettings {
+  startTime: string;
+  endTime: string;
+  lateThreshold: number;
+  earlyLeaveThreshold: number;
+  breakDuration: number;
+}
+
+const AttendanceManagementByDate: React.FC = () => {
   const navigate = useNavigate();
-  const [currentUser, setCurrentUser] = useState(null);
-  const [profile, setProfile] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [contentLoading, setContentLoading] = useState(false);
-  const [attendanceData, setAttendanceData] = useState([]);
-  const [employees, setEmployees] = useState([]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterDepartment, setFilterDepartment] = useState('');
-  const [filterStatus, setFilterStatus] = useState('');
-  const [filterType, setFilterType] = useState('');
-  const [selectedDate, setSelectedDate] = useState(new Date());
-  const [error, setError] = useState(null);
-  const [success, setSuccess] = useState(null);
-  const [showWorkHoursSettings, setShowWorkHoursSettings] = useState(false);
-  const [workHoursSettings, setWorkHoursSettings] = useState({
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [profile, setProfile] = useState<any>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [contentLoading, setContentLoading] = useState<boolean>(false);
+  const [attendanceData, setAttendanceData] = useState<Attendance[]>([]);
+  const [employees, setEmployees] = useState<Profile[]>([]);
+  const [searchTerm, setSearchTerm] = useState<string>('');
+  const [filterDepartment, setFilterDepartment] = useState<string>('');
+  const [filterStatus, setFilterStatus] = useState<string>('');
+  const [filterType, setFilterType] = useState<string>('');
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [showWorkHoursSettings, setShowWorkHoursSettings] = useState<boolean>(false);
+  const [workHoursSettings, setWorkHoursSettings] = useState<WorkHoursSettings>({
     startTime: '08:00',
     endTime: '17:00',
     lateThreshold: 15,
     earlyLeaveThreshold: 15,
     breakDuration: 60
   });
-  const [showFilters, setShowFilters] = useState(false);
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [showFilters, setShowFilters] = useState<boolean>(false);
+  const [isMobile, setIsMobile] = useState<boolean>(window.innerWidth < 768);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const recordsPerPage = 10;
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
@@ -54,9 +95,17 @@ const AttendanceManagementByDate = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  useEffect(() => { checkAccess(); }, []);
-  useEffect(() => { if (currentUser) fetchWorkHoursSettings(); }, [currentUser]);
-  useEffect(() => { if (selectedDate && currentUser) fetchAttendanceByDate(selectedDate); }, [selectedDate, currentUser]);
+  useEffect(() => {
+    checkAccess();
+  }, []);
+
+  useEffect(() => {
+    if (currentUser) fetchWorkHoursSettings();
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (selectedDate && currentUser) fetchAttendanceByDate(selectedDate);
+  }, [selectedDate, currentUser]);
 
   const checkAccess = async () => {
     try {
@@ -65,20 +114,21 @@ const AttendanceManagementByDate = () => {
         navigate('/login');
         return;
       }
-      const { data: profile } = await supabase
+      const { data: profileData } = await supabase
         .from('profiles')
         .select('role')
         .eq('id', user.id)
         .single();
-      if (!profile || profile.role !== 'admin') {
+      if (!profileData || profileData.role !== 'admin') {
         navigate('/dashboard');
         return;
       }
       setCurrentUser(user);
-      setProfile(profile);
+      setProfile(profileData);
       await Promise.all([fetchEmployees(), fetchAttendanceByDate(new Date())]);
     } catch (error) {
       console.error('Error checking access:', error);
+      setError('Gagal memeriksa akses pengguna');
       navigate('/login');
     } finally {
       setLoading(false);
@@ -96,6 +146,7 @@ const AttendanceManagementByDate = () => {
       if (data?.setting_value) setWorkHoursSettings(prev => ({ ...prev, ...data.setting_value }));
     } catch (error) {
       console.error('Error fetching work hours settings:', error);
+      setError('Gagal memuat pengaturan jam kerja');
     }
   };
 
@@ -111,37 +162,43 @@ const AttendanceManagementByDate = () => {
           updated_at: new Date().toISOString()
         }, { onConflict: 'setting_key' });
       if (error) throw error;
-      setSuccess('Pengaturan jam kerja berhasil disimpan!');
+      Swal.fire({
+        icon: 'success',
+        title: 'Berhasil',
+        text: 'Pengaturan jam kerja berhasil disimpan!'
+      });
       setShowWorkHoursSettings(false);
-      setTimeout(() => setSuccess(null), 3000);
     } catch (error) {
       console.error('Error saving work hours settings:', error);
-      setError('Gagal menyimpan pengaturan jam kerja');
+      Swal.fire({
+        icon: 'error',
+        title: 'Gagal',
+        text: `Gagal menyimpan pengaturan jam kerja: ${error.message}`
+      });
     }
   };
 
   const fetchEmployees = async () => {
     try {
       const { data, error } = await supabase
-        .from('profiles')
+        . from('profiles')
         .select('id, name, email, employee_id, department, role, status')
         .order('name');
       if (error) throw error;
       setEmployees(data || []);
     } catch (error) {
       console.error('Error fetching employees:', error);
+      setError('Gagal memuat data karyawan');
     }
   };
 
-  // PATCH: fix duplikasi "Tidak Hadir"
-  const fetchAttendanceByDate = async (date) => {
+  const fetchAttendanceByDate = async (date: Date) => {
     setContentLoading(true);
     try {
       const formattedDate = date.toISOString().split('T')[0];
       const startDateTime = `${formattedDate}T00:00:00`;
       const endDateTime = `${formattedDate}T23:59:59`;
 
-      // Ambil data absensi untuk tanggal tsb
       const { data: attendanceRows, error: attendanceError } = await supabase
         .from('attendance')
         .select(`
@@ -154,7 +211,6 @@ const AttendanceManagementByDate = () => {
 
       if (attendanceError) throw attendanceError;
 
-      // Ambil karyawan aktif non-admin
       const { data: activeEmployees, error: empError } = await supabase
         .from('profiles')
         .select('id, name, email, employee_id, department, role, status')
@@ -163,7 +219,6 @@ const AttendanceManagementByDate = () => {
 
       if (empError) throw empError;
 
-      // Ambil user_id yang sudah punya record type 'absent' di tanggal tsb
       const { data: existingAbsents, error: absentFetchError } = await supabase
         .from('attendance')
         .select('user_id')
@@ -193,7 +248,6 @@ const AttendanceManagementByDate = () => {
             .filter(record => record.type === 'masuk' && record.status === 'berhasil')
             .map(record => record.user_id)
         );
-        // Karyawan yang benar-benar belum ada record apa pun di hari tsb DAN belum ada absent
         const absentEmployees = activeEmployees.filter(emp => {
           const hasAnyAttendance = attendanceRows.some(
             record => record.user_id === emp.id && record.timestamp.startsWith(formattedDate)
@@ -208,9 +262,9 @@ const AttendanceManagementByDate = () => {
         if (absentEmployees.length > 0) {
           const absentRecords = absentEmployees.map(emp => ({
             user_id: emp.id,
-            type: 'absent',
+            type: 'absent' as const,
             timestamp: `${formattedDate}T${absentMarkTime.toTimeString().slice(0, 8)}`,
-            status: 'tidak_hadir',
+            status: 'tidak_hadir' as const,
             is_late: false,
             late_minutes: 0,
             work_hours: 0,
@@ -222,7 +276,6 @@ const AttendanceManagementByDate = () => {
             .insert(absentRecords);
           if (insertError) throw insertError;
 
-          // Re-fetch attendance data setelah insert
           const { data: updatedAttendance, error: updatedError } = await supabase
             .from('attendance')
             .select(`
@@ -248,12 +301,62 @@ const AttendanceManagementByDate = () => {
     }
   };
 
-  const handleDateChange = (e) => {
+  const handleDeleteAll = async () => {
+    const formattedDate = selectedDate.toISOString().split('T')[0];
+    const result = await Swal.fire({
+      title: 'Hapus Semua Data Absensi?',
+      text: `Apakah Anda yakin ingin menghapus semua data absensi untuk tanggal ${formatDate(selectedDate)}? Tindakan ini tidak dapat dibatalkan.`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#d33',
+      cancelButtonColor: '#3085d6',
+      confirmButtonText: 'Ya, Hapus Semua',
+      cancelButtonText: 'Batal'
+    });
+
+    if (!result.isConfirmed) return;
+
+    setContentLoading(true);
+    try {
+      const { error } = await supabase
+        .from('attendance')
+        .delete()
+        .gte('timestamp', `${formattedDate}T00:00:00`)
+        .lte('timestamp', `${formattedDate}T23:59:59`);
+
+      if (error) throw error;
+      await fetchAttendanceByDate(selectedDate);
+      Swal.fire({
+        icon: 'success',
+        title: 'Berhasil',
+        text: `Semua data absensi untuk ${formatDate(selectedDate)} berhasil dihapus`
+      });
+    } catch (error) {
+      console.error('Error deleting all attendance data:', error);
+      Swal.fire({
+        icon: 'error',
+        title: 'Gagal',
+        text: `Gagal menghapus data absensi: ${error.message}`
+      });
+    } finally {
+      setContentLoading(false);
+    }
+  };
+
+  const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSelectedDate(new Date(e.target.value));
+    setCurrentPage(1);
   };
 
   const exportToCsv = () => {
-    if (filteredAttendance.length === 0) return;
+    if (filteredAttendance.length === 0) {
+      Swal.fire({
+        icon: 'warning',
+        title: 'Tidak Ada Data',
+        text: 'Tidak ada data absensi untuk diekspor'
+      });
+      return;
+    }
     const headers = [
       'Tanggal', 'Waktu', 'Karyawan', 'ID Karyawan', 'Departemen', 'Jenis', 'Status',
       'Terlambat', 'Menit Terlambat', 'Jam Kerja', 'Lembur', 'Latitude', 'Longitude'
@@ -292,7 +395,7 @@ const AttendanceManagementByDate = () => {
     URL.revokeObjectURL(url);
   };
 
-  const getStatusColor = (status) => {
+  const getStatusColor = (status: string): string => {
     switch (status) {
       case 'berhasil': return 'text-green-600 bg-green-100';
       case 'wajah_tidak_valid': return 'text-red-600 bg-red-100';
@@ -301,7 +404,8 @@ const AttendanceManagementByDate = () => {
       default: return 'text-gray-600 bg-gray-100';
     }
   };
-  const getStatusIcon = (status) => {
+
+  const getStatusIcon = (status: string): JSX.Element => {
     switch (status) {
       case 'berhasil': return <CheckCircle className="h-4 w-4" />;
       case 'wajah_tidak_valid':
@@ -310,7 +414,8 @@ const AttendanceManagementByDate = () => {
       default: return <AlertTriangle className="h-4 w-4" />;
     }
   };
-  const getStatusText = (status) => {
+
+  const getStatusText = (status: string): string => {
     switch (status) {
       case 'berhasil': return 'Berhasil';
       case 'wajah_tidak_valid': return 'Wajah Invalid';
@@ -320,25 +425,26 @@ const AttendanceManagementByDate = () => {
     }
   };
 
-  const formatTime = (timestamp) => {
+  const formatTime = (timestamp: string): string => {
     return new Date(timestamp).toLocaleTimeString('id-ID', {
       hour: '2-digit',
       minute: '2-digit'
     });
   };
-  const formatDate = (date) => {
+
+  const formatDate = (date: Date): string => {
     return date.toLocaleDateString('id-ID', {
       day: 'numeric',
       month: 'long',
       year: 'numeric'
     });
   };
-  const handleWorkHoursChange = (e) => {
+
+  const handleWorkHoursChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setWorkHoursSettings(prev => ({ ...prev, [name]: value }));
   };
 
-  // PATCH: filter duplikat "absent" pada frontend (pencegahan sementara)
   const filteredAttendance = attendanceData
     .filter((record, idx, arr) =>
       record.type !== 'absent'
@@ -361,140 +467,132 @@ const AttendanceManagementByDate = () => {
       return matchesSearch && matchesDepartment && matchesStatus && matchesType;
     });
 
-  const getDepartments = () => {
-    const departments = [...new Set(employees.map(emp => emp.department).filter(Boolean))];
-    return departments;
+  const getDepartments = (): string[] => {
+    return [...new Set(employees.map(emp => emp.department).filter(Boolean) as string[])];
   };
+
+  const paginatedAttendance = filteredAttendance.slice((currentPage - 1) * recordsPerPage, currentPage * recordsPerPage);
+  const totalPages = Math.ceil(filteredAttendance.length / recordsPerPage);
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
         <div className="text-center">
           <div className="inline-flex space-x-1 text-blue-600">
             <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
             <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
             <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
           </div>
-          <p className="text-gray-600 mt-4 text-base">Memuat data absensi...</p>
+          <p className="text-gray-600 mt-4 text-lg">Memuat...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
-      {/* Sidebar */}
-      <AdminSidebar user={currentUser} profile={profile} />
+    <div className="min-h-screen bg-gray-100 flex">
+      <AdminSidebar user={currentUser} profile={profile} className="w-64 fixed h-screen hidden lg:block" />
 
-      {/* Main Content */}
-      <div className="flex-1 lg:ml-64 transition-all duration-300 ease-in-out">
-        {/* Header */}
-        <div className="bg-white shadow-sm border-b sticky top-0 z-10">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="py-4 sm:py-6">
-              <div className="flex flex-col space-y-4 sm:space-y-0 sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div className="flex-1 min-w-0">
-                  <h1 className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900 truncate">
-                    Kelola Absensi
-                  </h1>
-                  <p className="text-sm text-gray-600 mt-1">
-                    Lihat dan kelola absensi karyawan berdasarkan tanggal
-                  </p>
-                </div>
-                {/* Action buttons */}
-                <div className="flex flex-wrap items-center gap-3">
-                  <button
-                    onClick={() => {
-                      setContentLoading(true);
-                      fetchAttendanceByDate(selectedDate).finally(() => setContentLoading(false));
-                    }}
-                    className="flex items-center justify-center space-x-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm min-w-[48px] h-12"
-                    title="Refresh Data"
-                  >
-                    <RefreshCw className="h-5 w-5" />
-                    <span className="hidden sm:inline">Refresh</span>
-                  </button>
-                  <button
-                    onClick={exportToCsv}
-                    disabled={filteredAttendance.length === 0}
-                    className="flex items-center justify-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm h-12"
-                  >
-                    <Download className="h-5 w-5" />
-                    <span>Export CSV</span>
-                  </button>
-                </div>
+      <div className="flex-1 lg:ml-64 transition-all duration-300">
+        <div className="bg-white shadow-md border-b sticky top-0 z-10">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <h1 className="text-2xl font-bold text-gray-900 truncate">Manajemen Absensi</h1>
+                <p className="text-sm text-gray-600 mt-1">Lihat dan kelola absensi karyawan berdasarkan tanggal</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  onClick={() => {
+                    setContentLoading(true);
+                    fetchAttendanceByDate(selectedDate).finally(() => setContentLoading(false));
+                  }}
+                  className="flex items-center justify-center space-x-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors sm:w-auto w-12 h-12"
+                  title="Refresh Data"
+                >
+                  <RefreshCw className="h-5 w-5 sm:mr-2" />
+                  <span className="sm:inline hidden">Refresh</span>
+                </button>
+                <button
+                  onClick={exportToCsv}
+                  disabled={filteredAttendance.length === 0}
+                  className="flex items-center justify-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors sm:w-auto w-12 h-12"
+                  title="Export CSV"
+                >
+                  <Download className="h-5 w-5 sm:mr-2" />
+                  <span className="sm:inline hidden">Export CSV</span>
+                </button>
+                <button
+                  onClick={handleDeleteAll}
+                  disabled={filteredAttendance.length === 0}
+                  className="flex items-center justify-center space-x-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors sm:w-auto w-12 h-12"
+                  title="Hapus Semua Data"
+                >
+                  <Trash2 className="h-5 w-5 sm:mr-2" />
+                  <span className="sm:inline hidden">Hapus Semua</span>
+                </button>
               </div>
             </div>
           </div>
         </div>
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          {/* Error/Success Messages */}
-          {error && (
-            <div className="mb-4 p-4 bg-red-50 rounded-lg flex items-start space-x-3">
-              <AlertTriangle className="h-6 w-6 text-red-500 flex-shrink-0 mt-0.5" />
-              <p className="text-sm text-red-700 flex-1">{error}</p>
-              <button
-                onClick={() => setError(null)}
-                className="ml-auto text-red-500 hover:text-red-700"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-          )}
-
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {success && (
-            <div className="mb-4 p-4 bg-green-50 rounded-lg flex items-start space-x-3">
-              <CheckCircle className="h-6 w-6 text-green-500 flex-shrink-0 mt-0.5" />
-              <p className="text-sm text-green-700 flex-1">{success}</p>
-              <button
+            <div className="mb-6 p-4 bg-green-50 rounded-lg flex items-center space-x-3 animate-fade-in">
+              <CheckCircle className="h-5 w-5 text-green-500" />
+              <p className="text-green-700 flex-1">{success}</p>
+              <button 
                 onClick={() => setSuccess(null)}
-                className="ml-auto text-green-500 hover:text-green-700"
+                className="text-green-500 hover:text-green-700"
               >
-                <X className="h-5 w-5" />
+                <XCircle className="h-5 w-5" />
               </button>
             </div>
           )}
 
-          {/* Date Selector */}
-          <div className="bg-white rounded-lg shadow-sm mb-6">
-            <div className="p-4 sm:p-6">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div className="flex items-center space-x-3">
-                  <Clock className="h-5 w-5 text-blue-600 flex-shrink-0" />
-                  <h2 className="text-base sm:text-lg font-medium text-gray-900">
-                    Pilih Tanggal
-                  </h2>
-                </div>
-                <input
-                  type="date"
-                  value={selectedDate.toISOString().split('T')[0]}
-                  onChange={handleDateChange}
-                  className="w-full sm:w-48 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                />
+          {error && (
+            <div className="mb-6 p-4 bg-red-50 rounded-lg flex items-center space-x-3 animate-fade-in">
+              <AlertTriangle className="h-5 w-5 text-red-500" />
+              <p className="text-red-700 flex-1">{error}</p>
+              <button 
+                onClick={() => setError(null)}
+                className="text-red-500 hover:text-red-700"
+              >
+                <XCircle className="h-5 w-5" />
+              </button>
+            </div>
+          )}
+
+          <div className="bg-white rounded-xl shadow-md mb-6 p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div className="flex items-center space-x-3">
+                <Clock className="h-5 w-5 text-blue-600" />
+                <h2 className="text-lg font-semibold text-gray-900">Pilih Tanggal</h2>
               </div>
+              <input
+                type="date"
+                value={selectedDate.toISOString().split('T')[0]}
+                onChange={handleDateChange}
+                className="w-full sm:w-48 px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+              />
             </div>
           </div>
 
-          {/* Attendance Data */}
-          <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-200 bg-blue-50">
+          <div className="bg-white rounded-xl shadow-md overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200 bg-blue-50">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-3 min-w-0 flex-1">
-                  <Clock className="h-5 w-5 text-blue-600 flex-shrink-0" />
-                  <h2 className="text-base sm:text-lg font-medium text-gray-900 truncate">
+                  <Clock className="h-5 w-5 text-blue-600" />
+                  <h2 className="text-lg font-semibold text-gray-900 truncate">
                     Absensi: {formatDate(selectedDate)}
                   </h2>
                 </div>
-                <div className="text-sm text-gray-600 flex-shrink-0">
-                  {filteredAttendance.length} data
-                </div>
+                <div className="text-sm text-gray-600">{filteredAttendance.length} data</div>
               </div>
             </div>
 
-            {/* Search and Filters */}
-            <div className="p-4 border-b border-gray-200 sticky top-16 z-10 bg-white">
-              <div className="space-y-3">
+            <div className="p-6 border-b border-gray-200">
+              <div className="space-y-4">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
                   <input
@@ -502,7 +600,7 @@ const AttendanceManagementByDate = () => {
                     placeholder="Cari nama, email, ID..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                    className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition-all"
                   />
                 </div>
 
@@ -518,13 +616,13 @@ const AttendanceManagementByDate = () => {
                 </button>
 
                 {showFilters && (
-                  <div className="grid grid-cols-1 gap-4 pt-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Departemen</label>
                       <select
                         value={filterDepartment}
                         onChange={(e) => setFilterDepartment(e.target.value)}
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                        className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                       >
                         <option value="">Semua Departemen</option>
                         {getDepartments().map(dept => (
@@ -537,7 +635,7 @@ const AttendanceManagementByDate = () => {
                       <select
                         value={filterStatus}
                         onChange={(e) => setFilterStatus(e.target.value)}
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                        className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                       >
                         <option value="">Semua Status</option>
                         <option value="berhasil">Berhasil</option>
@@ -551,7 +649,7 @@ const AttendanceManagementByDate = () => {
                       <select
                         value={filterType}
                         onChange={(e) => setFilterType(e.target.value)}
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                        className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                       >
                         <option value="">Semua Jenis</option>
                         <option value="masuk">Masuk</option>
@@ -564,44 +662,42 @@ const AttendanceManagementByDate = () => {
               </div>
             </div>
 
-            {/* Attendance Table/Cards */}
             {contentLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="inline-flex space-x-2 text-blue-600">
-                  <div className="w-3 h-3 bg-current rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                  <div className="w-3 h-3 bg-current rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                  <div className="w-3 h-3 bg-current rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+              <div className="flex items-center justify-center py-16">
+                <div className="inline-flex space-x-1 text-blue-600">
+                  <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                  <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                  <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
                 </div>
               </div>
-            ) : filteredAttendance.length > 0 ? (
+            ) : paginatedAttendance.length > 0 ? (
               <>
-                {/* Desktop Table View */}
-                <div className="hidden md:block overflow-x-auto">
+                <div className="hidden lg:block">
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
                       <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Karyawan
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Waktu
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Jenis
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Status
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Keterlambatan
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Lokasi
                         </th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {filteredAttendance.map((record) => (
+                      {paginatedAttendance.map((record) => (
                         <tr key={record.id} className="hover:bg-gray-50 transition-colors">
                           <td className="px-6 py-4">
                             <div className="flex items-center">
@@ -629,12 +725,12 @@ const AttendanceManagementByDate = () => {
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 capitalize">
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs reglued text-xs font-medium bg-blue-100 text-blue-800 capitalize">
                               {record.type === 'masuk' ? 'Masuk' : record.type === 'keluar' ? 'Keluar' : 'Tidak Hadir'}
                             </span>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <div className={`inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(record.status)}`}>
+                            <div className={`inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(record.status)}`}>
                               {getStatusIcon(record.status)}
                               <span>{getStatusText(record.status)}</span>
                             </div>
@@ -668,22 +764,21 @@ const AttendanceManagementByDate = () => {
                   </table>
                 </div>
 
-                {/* Mobile Card View */}
-                <div className="md:hidden space-y-4 p-4">
-                  {filteredAttendance.map((record) => (
-                    <div key={record.id} className="bg-gray-50 rounded-lg shadow-sm p-4 hover:shadow-md transition-shadow">
+                <div className="lg:hidden p-6 space-y-6">
+                  {paginatedAttendance.map((record) => (
+                    <div key={record.id} className="bg-white rounded-xl shadow-md p-6 border border-gray-100 transition-transform hover:scale-[1.01]">
                       <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-center space-x-3 flex-1">
+                        <div className="flex items-center space-x-4 flex-1">
                           <div className="flex-shrink-0 h-12 w-12 bg-blue-100 rounded-full flex items-center justify-center">
                             <span className="text-blue-600 font-medium text-lg">
                               {record.profiles?.name?.charAt(0).toUpperCase() || '?'}
                             </span>
                           </div>
                           <div className="min-w-0 flex-1">
-                            <p className="text-base font-medium text-gray-900 truncate">
+                            <p className="text-base font-semibold text-gray-900 truncate">
                               {record.profiles?.name || 'Unknown'}
                             </p>
-                            <p className="text-sm text-gray-500 truncate">
+                            <p className="text-sm text-gray-600 truncate">
                               {record.profiles?.employee_id || '-'} • {record.profiles?.department || '-'}
                             </p>
                           </div>
@@ -728,36 +823,60 @@ const AttendanceManagementByDate = () => {
                     </div>
                   ))}
                 </div>
+
+                {totalPages > 1 && (
+                  <div className="flex justify-between items-center px-6 py-4 border-t border-gray-200">
+                    <button
+                      onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                      disabled={currentPage === 1}
+                      className="flex items-center space-x-2 px-4 py-2 text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <ChevronLeft className="h-5 w-5" />
+                      <span className="hidden sm:inline">Sebelumnya</span>
+                    </button>
+                    <span className="text-sm text-gray-600">
+                      Halaman {currentPage} dari {totalPages}
+                    </span>
+                    <button
+                      onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                      disabled={currentPage === totalPages}
+                      className="flex items-center space-x-2 px-4 py-2 text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <span className="hidden sm:inline">Berikutnya</span>
+                      <ChevronRight className="h-5 w-5" />
+                    </button>
+                  </div>
+                )}
               </>
             ) : (
-              <div className="text-center py-12">
-                <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <FileText className="h-10 w-10 text-gray-400" />
+              <div className="text-center py-16">
+                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <FileText className="h-8 w-8 text-gray-400" />
                 </div>
-                <p className="text-gray-500 text-lg">Tidak ada data absensi pada tanggal ini</p>
+                <p className="text-gray-600 text-lg font-medium mb-2">Tidak ada data absensi</p>
+                <p className="text-gray-500">Pilih tanggal lain atau refresh data</p>
               </div>
             )}
           </div>
         </div>
       </div>
 
-      {/* Work Hours Settings Modal */}
       {showWorkHoursSettings && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="w-full max-w-md bg-white rounded-xl shadow-lg max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
+          <div className="w-full max-w-lg bg-white rounded-2xl shadow-xl max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-xl font-semibold text-gray-900">Pengaturan Jam Kerja</h2>
                 <button
                   onClick={() => setShowWorkHoursSettings(false)}
-                  className="text-gray-400 hover:text-gray-600"
+                  className="text-gray-500 hover:text-gray-700 p-2 rounded-full hover:bg-gray-100"
                 >
                   <X className="h-6 w-6" />
                 </button>
               </div>
 
               <div className="space-y-6">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Jam Masuk
@@ -767,7 +886,7 @@ const AttendanceManagementByDate = () => {
                       name="startTime"
                       value={workHoursSettings.startTime}
                       onChange={handleWorkHoursChange}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                      className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                     />
                   </div>
                   <div>
@@ -779,7 +898,7 @@ const AttendanceManagementByDate = () => {
                       name="endTime"
                       value={workHoursSettings.endTime}
                       onChange={handleWorkHoursChange}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                      className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                     />
                   </div>
                 </div>
@@ -795,7 +914,7 @@ const AttendanceManagementByDate = () => {
                     onChange={handleWorkHoursChange}
                     min="0"
                     max="60"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                   />
                   <p className="text-xs text-gray-500 mt-1">
                     Karyawan dianggap terlambat jika masuk setelah jam masuk + toleransi
@@ -813,7 +932,7 @@ const AttendanceManagementByDate = () => {
                     onChange={handleWorkHoursChange}
                     min="0"
                     max="60"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                   />
                   <p className="text-xs text-gray-500 mt-1">
                     Karyawan dianggap pulang cepat jika keluar sebelum jam keluar - toleransi
@@ -831,14 +950,14 @@ const AttendanceManagementByDate = () => {
                     onChange={handleWorkHoursChange}
                     min="0"
                     max="120"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                   />
                 </div>
 
-                <div className="bg-blue-50 p-4 rounded-lg">
-                  <div className="flex items-center space-x-2 mb-2">
+                <div className="bg-blue-50 p-5 rounded-lg">
+                  <div className="flex items-center space-x-2 mb-3">
                     <Bell className="h-5 w-5 text-blue-600" />
-                    <h3 className="font-medium text-blue-900 text-base">Pengaturan Absensi Otomatis</h3>
+                    <h3 className="font-medium text-blue-900">Pengaturan Absensi Otomatis</h3>
                   </div>
                   <p className="text-sm text-blue-700">
                     Sistem akan otomatis menandai karyawan sebagai "Tidak Hadir" jika:
@@ -851,7 +970,7 @@ const AttendanceManagementByDate = () => {
                   </ul>
                 </div>
 
-                <div className="flex space-x-4 pt-4">
+                <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-4 pt-4">
                   <button
                     onClick={() => setShowWorkHoursSettings(false)}
                     className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm"

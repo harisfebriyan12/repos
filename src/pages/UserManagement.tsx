@@ -17,7 +17,9 @@ import {
   Camera,
   CheckCircle,
   AlertTriangle,
-  XCircle
+  XCircle,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { supabase, uploadFile, getFileUrl } from '../utils/supabaseClient';
 import Swal from 'sweetalert2';
@@ -25,24 +27,86 @@ import ProfileModal from '../components/ProfileModal';
 import CustomFaceCapture from '../components/CustomFaceCapture';
 import AdminSidebar from '../components/AdminSidebar';
 
-const UserManagement = () => {
+// Type definitions
+interface Position {
+  id: string;
+  name_id: string;
+  department: string;
+  base_salary: number;
+  is_active: boolean;
+}
+
+interface Bank {
+  id: string;
+  bank_name: string;
+  bank_logo: string;
+  is_active: boolean;
+}
+
+interface User {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  location?: string;
+  title?: string;
+  bio?: string;
+  role: 'admin' | 'karyawan';
+  position_id?: string;
+  employee_id?: string;
+  department?: string;
+  salary?: number;
+  bank_id?: string;
+  bank_account_number?: string;
+  bank_account_name?: string;
+  status: 'active' | 'inactive';
+  avatar_url?: string;
+  is_face_registered?: boolean;
+  positions?: Position;
+  bank_info?: Bank;
+}
+
+interface FormData {
+  id: string;
+  name: string;
+  email: string;
+  password: string;
+  phone: string;
+  location: string;
+  title: string;
+  bio: string;
+  role: 'admin' | 'karyawan';
+  position_id: string;
+  employee_id: string;
+  department: string;
+  salary: number;
+  bank_id: string;
+  bank_account_number: string;
+  bank_account_name: string;
+  status: 'active' | 'inactive';
+  avatar_url: string;
+}
+
+const UserManagement: React.FC = () => {
   const navigate = useNavigate();
-  const [users, setUsers] = useState([]);
-  const [positions, setPositions] = useState([]);
-  const [banks, setBanks] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [contentLoading, setContentLoading] = useState(false);
-  const [showModal, setShowModal] = useState(false);
-  const [modalMode, setModalMode] = useState('add'); // 'add', 'edit'
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterDepartment, setFilterDepartment] = useState('');
-  const [filterRole, setFilterRole] = useState('');
-  const [currentUser, setCurrentUser] = useState(null);
-  const [profile, setProfile] = useState(null);
-  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [users, setUsers] = useState<User[]>([]);
+  const [positions, setPositions] = useState<Position[]>([]);
+  const [banks, setBanks] = useState<Bank[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [contentLoading, setContentLoading] = useState<boolean>(false);
+  const [showModal, setShowModal] = useState<boolean>(false);
+  const [modalMode, setModalMode] = useState<'add' | 'edit'>('add');
+  const [searchTerm, setSearchTerm] = useState<string>('');
+  const [filterDepartment, setFilterDepartment] = useState<string>('');
+  const [filterRole, setFilterRole] = useState<string>('');
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [profile, setProfile] = useState<User | null>(null);
+  const [showProfileModal, setShowProfileModal] = useState<boolean>(false);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const usersPerPage = 10;
 
   // Form state
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<FormData>({
     id: '',
     name: '',
     email: '',
@@ -59,14 +123,15 @@ const UserManagement = () => {
     bank_id: '',
     bank_account_number: '',
     bank_account_name: '',
-    status: 'active'
+    status: 'active',
+    avatar_url: ''
   });
-  const [facePhoto, setFacePhoto] = useState(null);
-  const [faceFingerprint, setFaceFingerprint] = useState(null);
-  const [step, setStep] = useState(1);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState(null);
-  const [success, setSuccess] = useState(null);
+  const [facePhoto, setFacePhoto] = useState<Blob | null>(null);
+  const [faceFingerprint, setFaceFingerprint] = useState<any>(null);
+  const [step, setStep] = useState<number>(1);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     checkAccess();
@@ -157,7 +222,7 @@ const UserManagement = () => {
     }
   };
 
-  const handleInputChange = (e) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     
     if (name === 'position_id') {
@@ -199,7 +264,7 @@ const UserManagement = () => {
     }
   };
 
-  const handleFaceCapture = (photoBlob, fingerprint) => {
+  const handleFaceCapture = (photoBlob: Blob, fingerprint: any) => {
     setFacePhoto(photoBlob);
     setFaceFingerprint(fingerprint);
   };
@@ -223,7 +288,7 @@ const UserManagement = () => {
     }
     setIsSubmitting(true);
     try {
-      let userId;
+      let userId: string;
       if (modalMode === 'add') {
         const { data: authData, error: authError } = await supabase.auth.signUp({
           email: formData.email,
@@ -249,7 +314,7 @@ const UserManagement = () => {
         photoUrl = getFileUrl('face-photos', fileName);
       }
 
-      const profileData = {
+      const profileData: Partial<User> = {
         id: userId,
         name: formData.name,
         full_name: formData.name,
@@ -314,7 +379,7 @@ const UserManagement = () => {
     }
   };
 
-  const handleDeleteUser = async (userId, userName) => {
+  const handleDeleteUser = async (userId: string, userName: string) => {
     const result = await Swal.fire({
       title: 'Hapus Pengguna?',
       text: `Apakah Anda yakin ingin menghapus ${userName}? Tindakan ini tidak dapat dibatalkan.`,
@@ -355,7 +420,7 @@ const UserManagement = () => {
     }
   };
 
-  const handleToggleStatus = async (userId, currentStatus, userName) => {
+  const handleToggleStatus = async (userId: string, currentStatus: 'active' | 'inactive', userName: string) => {
     const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
     const actionText = newStatus === 'active' ? 'mengaktifkan' : 'menonaktifkan';
     const result = await Swal.fire({
@@ -410,7 +475,8 @@ const UserManagement = () => {
       bank_id: '',
       bank_account_number: '',
       bank_account_name: '',
-      status: 'active'
+      status: 'active',
+      avatar_url: ''
     });
     setFacePhoto(null);
     setFaceFingerprint(null);
@@ -421,7 +487,7 @@ const UserManagement = () => {
     setSuccess(null);
   };
 
-  const handleEditUser = (user) => {
+  const handleEditUser = (user: User) => {
     setFormData({
       id: user.id,
       name: user.name,
@@ -439,7 +505,8 @@ const UserManagement = () => {
       bank_account_number: user.bank_account_number || '',
       bank_account_name: user.bank_account_name || user.name,
       status: user.status || 'active',
-      avatar_url: user.avatar_url || ''
+      avatar_url: user.avatar_url || '',
+      password: ''
     });
     setFacePhoto(null);
     setFaceFingerprint(null);
@@ -448,27 +515,27 @@ const UserManagement = () => {
     setShowModal(true);
   };
 
-  const getRoleDisplayName = (role) => {
+  const getRoleDisplayName = (role: string) => {
     return role === 'admin' ? 'Administrator' : 'Karyawan';
   };
 
-  const getRoleIcon = (role) => {
+  const getRoleIcon = (role: string) => {
     return role === 'admin' ? <Shield className="h-4 w-4" /> : <User className="h-4 w-4" />;
   };
 
-  const getRoleColor = (role) => {
+  const getRoleColor = (role: string) => {
     return role === 'admin' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800';
   };
 
-  const getStatusColor = (status) => {
+  const getStatusColor = (status: string) => {
     return status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800';
   };
 
-  const canManageUser = (userId) => {
+  const canManageUser = (userId: string) => {
     return currentUser?.id !== userId;
   };
 
-  const formatCurrency = (amount) => {
+  const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('id-ID', {
       style: 'currency',
       currency: 'IDR',
@@ -492,14 +559,17 @@ const UserManagement = () => {
     return matchesSearch && matchesDepartment && matchesRole;
   });
 
+  const paginatedUsers = filteredUsers.slice((currentPage - 1) * usersPerPage, currentPage * usersPerPage);
+  const totalPages = Math.ceil(filteredUsers.length / usersPerPage);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center">
         <div className="text-center">
-          <div className="inline-flex space-x-2 text-blue-600">
-            <div className="w-3 h-3 bg-current rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-            <div className="w-3 h-3 bg-current rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-            <div className="w-3 h-3 bg-current rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+          <div className="inline-flex space-x-1 text-blue-600">
+            <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+            <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+            <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
           </div>
           <p className="text-gray-600 mt-4 text-lg">Memuat...</p>
         </div>
@@ -521,10 +591,10 @@ const UserManagement = () => {
               </div>
               <button
                 onClick={() => { setModalMode('add'); setShowModal(true); }}
-                className="flex items-center justify-center space-x-2 px-5 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                className="flex items-center justify-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors sm:w-auto w-12 h-12"
               >
-                <Plus className="h-5 w-5" />
-                <span>Tambah Pengguna</span>
+                <Plus className="h-5 w-5 sm:mr-2" />
+                <span className="sm:inline hidden">Tambah Pengguna</span>
               </button>
             </div>
           </div>
@@ -558,7 +628,7 @@ const UserManagement = () => {
           )}
 
           <div className="bg-white rounded-xl shadow-md mb-6 p-6">
-            <div className="flex flex-col lg:flex-row gap-4">
+            <div className="flex flex-col sm:flex-row gap-4">
               <div className="flex-1">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
@@ -607,13 +677,13 @@ const UserManagement = () => {
 
             {contentLoading ? (
               <div className="flex items-center justify-center py-16">
-                <div className="inline-flex space-x-2 text-blue-600">
-                  <div className="w-3 h-3 bg-current rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                  <div className="w-3 h-3 bg-current rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                  <div className="w-3 h-3 bg-current rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                <div className="inline-flex space-x-1 text-blue-600">
+                  <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                  <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                  <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
                 </div>
               </div>
-            ) : filteredUsers.length === 0 ? (
+            ) : paginatedUsers.length === 0 ? (
               <div className="text-center py-16">
                 <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                   <User className="h-8 w-8 text-gray-400" />
@@ -623,139 +693,141 @@ const UserManagement = () => {
               </div>
             ) : (
               <>
-                <table className="min-w-full divide-y divide-gray-200 hidden lg:table">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Pengguna
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Jabatan & Departemen
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Gaji
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Kontak
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Status
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Aksi
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {filteredUsers.map((user) => (
-                      <tr key={user.id} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center space-x-3">
-                            <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center">
-                              {user.avatar_url ? (
-                                <img 
-                                  src={user.avatar_url} 
-                                  alt={user.name}
-                                  className="w-10 h-10 rounded-full object-cover"
-                                />
-                              ) : (
-                                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${getRoleColor(user.role)}`}>
-                                  {getRoleIcon(user.role)}
+                <div className="hidden lg:block">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Pengguna
+                        </th>
+                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Jabatan & Departemen
+                        </th>
+                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Gaji
+                        </th>
+                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Kontak
+                        </th>
+                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Status
+                        </th>
+                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Aksi
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {paginatedUsers.map((user) => (
+                        <tr key={user.id} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="flex items-center space-x-3">
+                              <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center">
+                                {user.avatar_url ? (
+                                  <img 
+                                    src={user.avatar_url} 
+                                    alt={user.name}
+                                    className="w-10 h-10 rounded-full object-cover"
+                                  />
+                                ) : (
+                                  <div className={`w-10 h-10 rounded-full flex items-center justify-center ${getRoleColor(user.role)}`}>
+                                    {getRoleIcon(user.role)}
+                                  </div>
+                                )}
+                              </div>
+                              <div>
+                                <div 
+                                  className="text-sm font-medium text-blue-600 cursor-pointer hover:underline"
+                                  onClick={() => { setProfile(user); setShowProfileModal(true); }}
+                                >
+                                  {user.name}
                                 </div>
-                              )}
+                                <div className="text-sm text-gray-500">
+                                  ID: {user.employee_id || 'N/A'}
+                                </div>
+                              </div>
                             </div>
-                            <div>
-                              <div 
-                                className="text-sm font-medium text-blue-600 cursor-pointer hover:underline"
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm font-medium text-gray-900">
+                              {user.positions?.name_id || user.title || getRoleDisplayName(user.role)}
+                            </div>
+                            <div className="text-sm text-gray-500">
+                              {user.positions?.department || user.department || 'N/A'}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm font-medium text-gray-900">
+                              {formatCurrency(user.positions?.base_salary || user.salary || 0)}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm text-gray-900 flex items-center">
+                              <Mail className="h-4 w-4 mr-2 text-gray-400" />
+                              <span 
+                                className="cursor-pointer text-blue-600 hover:underline"
                                 onClick={() => { setProfile(user); setShowProfileModal(true); }}
                               >
-                                {user.name}
-                              </div>
-                              <div className="text-sm text-gray-500">
-                                ID: {user.employee_id || 'N/A'}
-                              </div>
+                                {user.email}
+                              </span>
                             </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-medium text-gray-900">
-                            {user.positions?.name_id || user.title || getRoleDisplayName(user.role)}
-                          </div>
-                          <div className="text-sm text-gray-500">
-                            {user.positions?.department || user.department || 'N/A'}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-medium text-gray-900">
-                            {formatCurrency(user.positions?.base_salary || user.salary || 0)}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900 flex items-center">
-                            <Mail className="h-4 w-4 mr-2 text-gray-400" />
-                            <span 
-                              className="cursor-pointer text-blue-600 hover:underline"
-                              onClick={() => { setProfile(user); setShowProfileModal(true); }}
-                            >
-                              {user.email}
-                            </span>
-                          </div>
-                          {user.phone && (
-                            <div className="text-sm text-gray-500 flex items-center mt-1">
-                              <Phone className="h-4 w-4 mr-2 text-gray-400" />
-                              {user.phone}
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="space-y-2">
-                            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${getRoleColor(user.role)}`}>
-                              {user.role === 'admin' && <Shield className="h-3 w-3 mr-1" />}
-                              {getRoleDisplayName(user.role)}
-                            </span>
-                            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(user.status)}`}>
-                              {user.status === 'active' ? 'Aktif' : 'Nonaktif'}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                          <div className="flex space-x-3">
-                            {canManageUser(user.id) ? (
-                              <>
-                                <button
-                                  onClick={() => handleEditUser(user)}
-                                  className="text-blue-600 hover:text-blue-800 p-2 rounded-full hover:bg-blue-50 transition-colors"
-                                  title="Edit Pengguna"
-                                >
-                                  <Edit className="h-5 w-5" />
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteUser(user.id, user.name)}
-                                  className="text-red-600 hover:text-red-800 p-2 rounded-full hover:bg-red-50 transition-colors"
-                                  title="Hapus Pengguna"
-                                >
-                                  <Trash2 className="h-5 w-5" />
-                                </button>
-                                <button
-                                  onClick={() => handleToggleStatus(user.id, user.status, user.name)}
-                                  className="text-purple-600 hover:text-purple-800 p-2 rounded-full hover:bg-purple-50 transition-colors"
-                                  title={user.status === 'active' ? 'Nonaktifkan' : 'Aktifkan'}
-                                >
-                                  {user.status === 'active' ? <ToggleRight className="h-5 w-5" /> : <ToggleLeft className="h-5 w-5" />}
-                                </button>
-                              </>
-                            ) : (
-                              <span className="text-gray-400 text-sm">Akun Anda</span>
+                            {user.phone && (
+                              <div className="text-sm text-gray-500 flex items-center mt-1">
+                                <Phone className="h-4 w-4 mr-2 text-gray-400" />
+                                {user.phone}
+                              </div>
                             )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="space-y-2">
+                              <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${getRoleColor(user.role)}`}>
+                                {user.role === 'admin' && <Shield className="h-3 w-3 mr-1" />}
+                                {getRoleDisplayName(user.role)}
+                              </span>
+                              <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(user.status)}`}>
+                                {user.status === 'active' ? 'Aktif' : 'Nonaktif'}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                            <div className="flex space-x-3">
+                              {canManageUser(user.id) ? (
+                                <>
+                                  <button
+                                    onClick={() => handleEditUser(user)}
+                                    className="text-blue-600 hover:text-blue-800 p-2 rounded-full hover:bg-blue-50 transition-colors"
+                                    title="Edit Pengguna"
+                                  >
+                                    <Edit className="h-5 w-5" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteUser(user.id, user.name)}
+                                    className="text-red-600 hover:text-red-800 p-2 rounded-full hover:bg-red-50 transition-colors"
+                                    title="Hapus Pengguna"
+                                  >
+                                    <Trash2 className="h-5 w-5" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleToggleStatus(user.id, user.status, user.name)}
+                                    className="text-purple-600 hover:text-purple-800 p-2 rounded-full hover:bg-purple-50 transition-colors"
+                                    title={user.status === 'active' ? 'Nonaktifkan' : 'Aktifkan'}
+                                  >
+                                    {user.status === 'active' ? <ToggleRight className="h-5 w-5" /> : <ToggleLeft className="h-5 w-5" />}
+                                  </button>
+                                </>
+                              ) : (
+                                <span className="text-gray-400 text-sm">Akun Anda</span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
 
                 <div className="lg:hidden p-6 space-y-6">
-                  {filteredUsers.map((user) => (
+                  {paginatedUsers.map((user) => (
                     <div key={user.id} className="bg-white rounded-xl shadow-md p-6 border border-gray-100 transition-transform hover:scale-[1.01]">
                       <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center space-x-4">
@@ -835,11 +907,35 @@ const UserManagement = () => {
                     </div>
                   ))}
                 </div>
+
+                {totalPages > 1 && (
+                  <div className="flex justify-between items-center px-6 py-4 border-t border-gray-200">
+                    <button
+                      onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                      disabled={currentPage === 1}
+                      className="flex items-center space-x-2 px-4 py-2 text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50"
+                    >
+                      <ChevronLeft className="h-5 w-5" />
+                      <span>Sebelumnya</span>
+                    </button>
+                    <span className="text-sm text-gray-600">
+                      Halaman {currentPage} dari {totalPages}
+                    </span>
+                    <button
+                      onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                      disabled={currentPage === totalPages}
+                      className="flex items-center space-x-2 px-4 py-2 text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50"
+                    >
+                      <span>Berikutnya</span>
+                      <ChevronRight className="h-5 w-5" />
+                    </button>
+                  </div>
+                )}
               </>
             )}
           </div>
 
-          {showProfileModal && (
+          {showProfileModal && profile && (
             <ProfileModal profile={profile} onClose={() => setShowProfileModal(false)} />
           )}
         </div>
@@ -861,29 +957,27 @@ const UserManagement = () => {
                 </button>
               </div>
 
-              {modalMode !== 'password' && (
-                <div className="flex items-center justify-center mb-6">
-                  {[1, 2].map((stepNum) => (
-                    <div key={stepNum} className="flex items-center">
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium ${
-                        step >= stepNum
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-gray-200 text-gray-600'
-                      }`}>
-                        {step > stepNum ? <CheckCircle className="h-6 w-6" /> : stepNum}
-                      </div>
-                      {stepNum < 2 && (
-                        <div className={`w-12 h-1 mx-3 ${
-                          step > stepNum ? 'bg-blue-600' : 'bg-gray-200'
-                        }`} />
-                      )}
+              <div className="flex items-center justify-center mb-6">
+                {[1, 2].map((stepNum) => (
+                  <div key={stepNum} className="flex items-center">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium ${
+                      step >= stepNum
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-200 text-gray-600'
+                    }`}>
+                      {step > stepNum ? <CheckCircle className="h-6 w-6" /> : stepNum}
                     </div>
-                  ))}
-                </div>
-              )}
+                    {stepNum < 2 && (
+                      <div className={`w-12 h-1 mx-3 ${
+                        step > stepNum ? 'bg-blue-600' : 'bg-gray-200'
+                      }`} />
+                    )}
+                  </div>
+                ))}
+              </div>
 
               {step === 1 ? (
-                <form onSubmit={(e) => { e.preventDefault(); formData.role === 'admin' ? handleCreateUser() : setStep(2); }} className="space-y-6">
+                <div className="space-y-6">
                   <div className="bg-blue-50 p-5 rounded-lg">
                     <h3 className="font-medium text-blue-900 mb-4">Informasi Jabatan</h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1126,7 +1220,8 @@ const UserManagement = () => {
                       Batal
                     </button>
                     <button
-                      type="submit"
+                      type="button"
+                      onClick={() => formData.role === 'admin' ? handleCreateUser() : setStep(2)}
                       disabled={isSubmitting}
                       className="flex-1 bg-blue-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
                     >
@@ -1136,7 +1231,7 @@ const UserManagement = () => {
                       </div>
                     </button>
                   </div>
-                </form>
+                </div>
               ) : (
                 <div className="space-y-6">
                   <div className="text-center">

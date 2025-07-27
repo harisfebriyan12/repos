@@ -1,35 +1,61 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Calendar, Filter, Download, CheckCircle, XCircle, AlertTriangle, Users, Search, RefreshCw, MapPin } from 'lucide-react';
+import { ArrowLeft, Calendar, Filter, Download, CheckCircle, XCircle, AlertTriangle, Users, RefreshCw, MapPin } from 'lucide-react';
 import { supabase } from '../utils/supabaseClient';
 import Swal from 'sweetalert2';
 
-const AttendanceHistory = () => {
+// Define TypeScript interfaces for type safety
+interface Profile {
+  id: string;
+  name: string;
+  email: string;
+  employee_id: string | null;
+  department: string | null;
+  role?: string;
+}
+
+interface AttendanceRecord {
+  id: string;
+  user_id: string;
+  timestamp: string;
+  type: 'masuk' | 'keluar' | 'tidak_hadir';
+  status: 'berhasil' | 'wajah_tidak_valid' | 'lokasi_tidak_valid' | 'tidak_hadir';
+  is_late: boolean;
+  late_minutes: number | null;
+  work_hours: number | null;
+  overtime_hours: number | null;
+  latitude: number | null;
+  longitude: number | null;
+  profiles?: Profile;
+}
+
+interface Filters {
+  startDate: string;
+  endDate: string;
+  type: string;
+  status: string;
+  employeeId: string;
+}
+
+const AttendanceHistory: React.FC = () => {
   const navigate = useNavigate();
-  const [user, setUser] = useState(null);
-  const [userRole, setUserRole] = useState(null);
-  const [attendanceData, setAttendanceData] = useState([]);
-  const [filteredData, setFilteredData] = useState([]);
+  const [user, setUser] = useState<any>(null);
+  const [userRole, setUserRole] = useState<string | null>(null);
+  const [attendanceData, setAttendanceData] = useState<AttendanceRecord[]>([]);
+  const [filteredData, setFilteredData] = useState<AttendanceRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [employees, setEmployees] = useState([]);
-  const [selectedRecord, setSelectedRecord] = useState(null);
+  const [employees, setEmployees] = useState<Profile[]>([]);
+  const [selectedRecord, setSelectedRecord] = useState<AttendanceRecord | null>(null);
   const [selectedEmployee, setSelectedEmployee] = useState('all');
-  const [filters, setFilters] = useState({
+  const [filters, setFilters] = useState<Filters>({
     startDate: '',
     endDate: '',
     type: '',
     status: '',
-    employeeId: ''
+    employeeId: '',
   });
 
-  useEffect(() => {
-    checkUser();
-  }, []);
-
-  useEffect(() => {
-    applyFilters();
-  }, [attendanceData, filters, selectedEmployee]);
-
+  // Check user authentication and role
   const checkUser = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -40,7 +66,6 @@ const AttendanceHistory = () => {
 
       setUser(user);
 
-      // Get user role
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('role')
@@ -50,21 +75,25 @@ const AttendanceHistory = () => {
       if (profileError) throw profileError;
       setUserRole(profile.role);
 
-      // If admin, fetch all employees
       if (profile.role === 'admin') {
-        await fetchEmployees();
-        await fetchAllAttendance();
+        await Promise.all([fetchEmployees(), fetchAllAttendance()]);
       } else {
         await fetchAttendanceHistory(user.id);
       }
     } catch (error) {
       console.error('Error checking user:', error);
+      Swal.fire({
+        icon: 'error',
+        title: 'Gagal Memuat',
+        text: 'Terjadi kesalahan saat memuat data pengguna.',
+      });
       navigate('/login');
     } finally {
       setLoading(false);
     }
   };
 
+  // Fetch all employees for admin
   const fetchEmployees = async () => {
     try {
       const { data, error } = await supabase
@@ -76,9 +105,15 @@ const AttendanceHistory = () => {
       setEmployees(data || []);
     } catch (error) {
       console.error('Error fetching employees:', error);
+      Swal.fire({
+        icon: 'error',
+        title: 'Gagal Memuat',
+        text: 'Terjadi kesalahan saat memuat data karyawan.',
+      });
     }
   };
 
+  // Fetch all attendance records for admin
   const fetchAllAttendance = async () => {
     try {
       const { data, error } = await supabase
@@ -94,10 +129,16 @@ const AttendanceHistory = () => {
       setAttendanceData(data || []);
     } catch (error) {
       console.error('Error fetching all attendance:', error);
+      Swal.fire({
+        icon: 'error',
+        title: 'Gagal Memuat',
+        text: 'Terjadi kesalahan saat memuat data absensi.',
+      });
     }
   };
 
-  const fetchAttendanceHistory = async (userId) => {
+  // Fetch attendance history for a specific user
+  const fetchAttendanceHistory = async (userId: string) => {
     try {
       const { data, error } = await supabase
         .from('attendance')
@@ -109,22 +150,24 @@ const AttendanceHistory = () => {
       setAttendanceData(data || []);
     } catch (error) {
       console.error('Error fetching attendance history:', error);
+      Swal.fire({
+        icon: 'error',
+        title: 'Gagal Memuat',
+        text: 'Terjadi kesalahan saat memuat riwayat absensi.',
+      });
     }
   };
 
-  const applyFilters = () => {
+  // Apply filters to attendance data
+  const applyFilters = useCallback(() => {
     let filtered = [...attendanceData];
 
-    // Filter out logout records and only keep masuk/keluar
     filtered = filtered.filter(record => 
       record.type === 'masuk' || record.type === 'keluar'
     );
 
-    // Filter by employee if admin
     if (userRole === 'admin' && selectedEmployee !== 'all') {
-      filtered = filtered.filter(record => 
-        record.user_id === selectedEmployee
-      );
+      filtered = filtered.filter(record => record.user_id === selectedEmployee);
     }
 
     if (filters.startDate) {
@@ -150,85 +193,106 @@ const AttendanceHistory = () => {
     }
 
     setFilteredData(filtered);
-  };
+  }, [attendanceData, filters, selectedEmployee, userRole]);
 
-  const handleFilterChange = (e) => {
+  // Handle filter input changes
+  const handleFilterChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setFilters({
       ...filters,
-      [e.target.name]: e.target.value
+      [e.target.name]: e.target.value,
     });
   };
 
-  const handleEmployeeChange = (e) => {
+  // Handle employee selection
+  const handleEmployeeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setSelectedEmployee(e.target.value);
   };
 
+  // Clear all filters
   const clearFilters = () => {
     setFilters({
       startDate: '',
       endDate: '',
       type: '',
-      status: ''
+      status: '',
+      employeeId: '',
     });
     setSelectedEmployee('all');
   };
 
+  // Refresh data
   const refreshData = async () => {
     setLoading(true);
-    if (userRole === 'admin') {
-      await fetchAllAttendance();
-    } else {
-      await fetchAttendanceHistory(user.id);
+    try {
+      if (userRole === 'admin') {
+        await fetchAllAttendance();
+      } else {
+        await fetchAttendanceHistory(user.id);
+      }
+    } catch (error) {
+      console.error('Error refreshing data:', error);
+      Swal.fire({
+        icon: 'error',
+        title: 'Gagal Refresh',
+        text: 'Terjadi kesalahan saat memperbarui data.',
+      });
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
-  const exportToCsv = () => {
+  // Export data to CSV
+  const exportToCsv = async () => {
     if (filteredData.length === 0) {
-      Swal.fire({ icon: 'info', title: 'Tidak Ada Data', text: 'Tidak ada data absensi untuk diexport.' }).then(() => {});
+      await Swal.fire({
+        icon: 'info',
+        title: 'Tidak Ada Data',
+        text: 'Tidak ada data absensi untuk diexport.',
+      });
       return;
     }
+
     try {
-      const headers = userRole === 'admin' 
+      const headers = userRole === 'admin'
         ? ['Tanggal', 'Waktu', 'Karyawan', 'Departemen', 'Jenis', 'Status', 'Terlambat', 'Menit Terlambat', 'Jam Kerja', 'Lembur', 'Latitude', 'Longitude']
         : ['Tanggal', 'Waktu', 'Jenis', 'Status', 'Terlambat', 'Menit Terlambat', 'Jam Kerja', 'Lembur', 'Latitude', 'Longitude'];
+
       const csvContent = [
         headers,
         ...filteredData.map(record => {
           const date = new Date(record.timestamp);
           const dateStr = date.toLocaleDateString('id-ID');
           const timeStr = date.toLocaleTimeString('id-ID');
-          if (userRole === 'admin') {
-            return [
-              dateStr,
-              timeStr,
-              record.profiles?.name || 'Unknown',
-              record.profiles?.department || '-',
-              record.type === 'masuk' ? 'Masuk' : record.type === 'keluar' ? 'Keluar' : 'Tidak Hadir',
-              record.status,
-              record.is_late ? 'Ya' : 'Tidak',
-              record.late_minutes || '0',
-              record.work_hours || '0',
-              record.overtime_hours || '0',
-              record.latitude || '',
-              record.longitude || ''
-            ];
-          } else {
-            return [
-              dateStr,
-              timeStr,
-              record.type === 'masuk' ? 'Masuk' : record.type === 'keluar' ? 'Keluar' : 'Tidak Hadir',
-              record.status,
-              record.is_late ? 'Ya' : 'Tidak',
-              record.late_minutes || '0',
-              record.work_hours || '0',
-              record.overtime_hours || '0',
-              record.latitude || '',
-              record.longitude || ''
-            ];
-          }
-        })
+          return userRole === 'admin'
+            ? [
+                dateStr,
+                timeStr,
+                record.profiles?.name || 'Unknown',
+                record.profiles?.department || '-',
+                record.type === 'masuk' ? 'Masuk' : record.type === 'keluar' ? 'Keluar' : 'Tidak Hadir',
+                record.status,
+                record.is_late ? 'Ya' : 'Tidak',
+                record.late_minutes ?? '0',
+                record.work_hours ?? '0',
+                record.overtime_hours ?? '0',
+                record.latitude ?? '',
+                record.longitude ?? '',
+              ]
+            : [
+                dateStr,
+                timeStr,
+                record.type === 'masuk' ? 'Masuk' : record.type === 'keluar' ? 'Keluar' : 'Tidak Hadir',
+                record.status,
+                record.is_late ? 'Ya' : 'Tidak',
+                record.late_minutes ?? '0',
+                record.work_hours ?? '0',
+                record.overtime_hours ?? '0',
+                record.latitude ?? '',
+                record.longitude ?? '',
+              ];
+        }),
       ].map(row => row.join(',')).join('\n');
+
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       const link = document.createElement('a');
       const url = URL.createObjectURL(blob);
@@ -238,13 +302,24 @@ const AttendanceHistory = () => {
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
-      await Swal.fire({ icon: 'success', title: 'Export Berhasil', text: 'Data absensi berhasil diexport ke CSV.' });
+
+      await Swal.fire({
+        icon: 'success',
+        title: 'Export Berhasil',
+        text: 'Data absensi berhasil diexport ke CSV.',
+      });
     } catch (err) {
-      await Swal.fire({ icon: 'error', title: 'Export Gagal', text: 'Terjadi kesalahan saat export data absensi.' });
+      console.error('Error exporting to CSV:', err);
+      await Swal.fire({
+        icon: 'error',
+        title: 'Export Gagal',
+        text: 'Terjadi kesalahan saat export data absensi.',
+      });
     }
   };
 
-  const getStatusColor = (status) => {
+  // Get status color
+  const getStatusColor = (status: string) => {
     switch (status) {
       case 'berhasil':
         return 'text-green-600 bg-green-100';
@@ -259,13 +334,13 @@ const AttendanceHistory = () => {
     }
   };
 
-  const getStatusIcon = (status) => {
+  // Get status icon
+  const getStatusIcon = (status: string) => {
     switch (status) {
       case 'berhasil':
         return <CheckCircle className="h-4 w-4" />;
       case 'wajah_tidak_valid':
       case 'lokasi_tidak_valid':
-        return <XCircle className="h-4 w-4" />;
       case 'tidak_hadir':
         return <XCircle className="h-4 w-4" />;
       default:
@@ -273,7 +348,8 @@ const AttendanceHistory = () => {
     }
   };
 
-  const getStatusText = (status) => {
+  // Get status text
+  const getStatusText = (status: string) => {
     switch (status) {
       case 'berhasil':
         return 'Berhasil';
@@ -288,20 +364,31 @@ const AttendanceHistory = () => {
     }
   };
 
-  const formatDateTime = (timestamp) => {
+  // Format date and time
+  const formatDateTime = (timestamp: string) => {
     const date = new Date(timestamp);
     return {
       date: date.toLocaleDateString('id-ID', {
         day: '2-digit',
         month: 'short',
-        year: 'numeric'
+        year: 'numeric',
       }),
       time: date.toLocaleTimeString('id-ID', {
         hour: '2-digit',
-        minute: '2-digit'
-      })
+        minute: '2-digit',
+      }),
     };
   };
+
+  // Run checkUser on component mount
+  useEffect(() => {
+    checkUser();
+  }, []);
+
+  // Apply filters when dependencies change
+  useEffect(() => {
+    applyFilters();
+  }, [applyFilters]);
 
   if (loading) {
     return (
@@ -328,8 +415,8 @@ const AttendanceHistory = () => {
               <div>
                 <h1 className="text-2xl font-bold text-white">Laporan Absensi</h1>
                 <p className="text-sm text-blue-100">
-                  {userRole === 'admin' 
-                    ? 'Lihat dan export laporan absensi semua karyawan' 
+                  {userRole === 'admin'
+                    ? 'Lihat dan export laporan absensi semua karyawan'
                     : 'Lihat dan export riwayat absensi Anda'}
                 </p>
               </div>
@@ -357,7 +444,7 @@ const AttendanceHistory = () => {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Filters - Improved Mobile Design */}
+        {/* Filters */}
         <div className="bg-white rounded-lg shadow-md mb-6">
           <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200">
             <div className="flex items-center space-x-2">
@@ -416,10 +503,9 @@ const AttendanceHistory = () => {
                 />
               </div>
             </div>
-            
+
             {/* Desktop: Show all filters */}
             <div className="hidden sm:grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {/* Employee Filter - Only for Admin */}
               {userRole === 'admin' && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Karyawan</label>
@@ -488,7 +574,7 @@ const AttendanceHistory = () => {
                 </select>
               </div>
             </div>
-            
+
             <div className="mt-3 sm:mt-4 flex justify-between items-center">
               <div className="text-xs sm:text-sm text-gray-500">
                 Menampilkan {filteredData.length} dari {attendanceData.length} data
@@ -520,11 +606,11 @@ const AttendanceHistory = () => {
               )}
             </div>
           </div>
-          
+
           {filteredData.length > 0 ? (
             <>
               {/* Mobile: Card Layout */}
-              <div className="sm:hidden space-y-3">
+              <div className="sm:hidden space-y-3 p-4">
                 {filteredData.map((record) => {
                   const dateTime = formatDateTime(record.timestamp);
                   return (
@@ -562,7 +648,7 @@ const AttendanceHistory = () => {
                           )}
                         </span>
                         <span>
-                          {record.work_hours > 0 ? `${record.work_hours} jam` : '-'}
+                          {record.work_hours && record.work_hours > 0 ? `${record.work_hours} jam` : '-'}
                         </span>
                       </div>
                     </div>
@@ -604,7 +690,11 @@ const AttendanceHistory = () => {
                     {filteredData.map((record) => {
                       const dateTime = formatDateTime(record.timestamp);
                       return (
-                        <tr key={record.id} className="hover:bg-blue-50 cursor-pointer transition" onClick={() => setSelectedRecord(record)}>
+                        <tr
+                          key={record.id}
+                          className="hover:bg-blue-50 cursor-pointer transition"
+                          onClick={() => setSelectedRecord(record)}
+                        >
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div>
                               <div className="text-sm font-medium text-gray-900">
@@ -651,13 +741,13 @@ const AttendanceHistory = () => {
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="text-sm text-gray-900">
-                              {record.work_hours > 0 ? (
+                              {record.work_hours && record.work_hours > 0 ? (
                                 <span>{record.work_hours} jam</span>
                               ) : (
                                 <span>-</span>
                               )}
                             </div>
-                            {record.overtime_hours > 0 && (
+                            {record.overtime_hours && record.overtime_hours > 0 && (
                               <div className="text-xs text-blue-600">
                                 Lembur: {record.overtime_hours} jam
                               </div>
@@ -719,9 +809,9 @@ const AttendanceHistory = () => {
                 <span className="font-medium text-gray-700">Jenis:</span> {selectedRecord.type === 'masuk' ? 'Masuk' : 'Keluar'}
               </div>
               <div>
-                <span className="font-medium text-gray-700">Status:</span> 
+                <span className="font-medium text-gray-700">Status:</span>
                 <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ml-2 ${getStatusColor(selectedRecord.status)}`}>
-                  {getStatusIcon(selectedRecord.status)} 
+                  {getStatusIcon(selectedRecord.status)}
                   <span className="ml-1">{getStatusText(selectedRecord.status)}</span>
                 </span>
               </div>
@@ -729,9 +819,9 @@ const AttendanceHistory = () => {
                 <span className="font-medium text-gray-700">Keterlambatan:</span> {selectedRecord.is_late ? `${selectedRecord.late_minutes} menit` : 'Tepat Waktu'}
               </div>
               <div>
-                <span className="font-medium text-gray-700">Jam Kerja:</span> {selectedRecord.work_hours > 0 ? `${selectedRecord.work_hours} jam` : '-'}
+                <span className="font-medium text-gray-700">Jam Kerja:</span> {selectedRecord.work_hours && selectedRecord.work_hours > 0 ? `${selectedRecord.work_hours} jam` : '-'}
               </div>
-              {selectedRecord.overtime_hours > 0 && (
+              {selectedRecord.overtime_hours && selectedRecord.overtime_hours > 0 && (
                 <div>
                   <span className="font-medium text-gray-700">Lembur:</span> {selectedRecord.overtime_hours} jam
                 </div>
