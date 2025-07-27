@@ -14,7 +14,7 @@ import NotificationSystem from '../components/NotificationSystem';
 import AttendanceHistory from './AttendanceHistory';
 import ProfileEditor from '../features/karyawan/profile/ProfileEditor';
 import StatCard from '../components/ui/StatCard';
-import { User, Profile } from '../types';
+import { User as UserType, Profile } from '../types';
 
 // Calendar component (simplified version)
 const ReactCalendar = ({ onChange, value, tileContent, tileClassName, locale, className, prevLabel, nextLabel, navigationLabel }: {
@@ -111,7 +111,7 @@ const ReactCalendar = ({ onChange, value, tileContent, tileClassName, locale, cl
 
 const DashboardPage = () => {
   const navigate = useNavigate();
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<UserType | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [todayAttendance, setTodayAttendance] = useState<any[]>([]);
   const [salaryInfo, setSalaryInfo] = useState<any | null>(null);

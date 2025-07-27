@@ -38,13 +38,13 @@ import {
 import WarningLetterGenerator from '../components/WarningLetterGenerator';
 import NotificationSystem from '../components/NotificationSystem';
 import StatCard from '../components/ui/StatCard';
-import { User, Profile } from '../types';
+import { User as UserType, Profile } from '../types';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, Title, Tooltip, Legend);
 
 const AdminDashboardPage = () => {
   const navigate = useNavigate();
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<UserType | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [isCollapsed, setIsCollapsed] = useState(false);
