@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  Users, 
-  Download, 
-  Search, 
-  CheckCircle, 
-  XCircle, 
-  AlertTriangle, 
-  Clock, 
+import {
+  Users,
+  Download,
+  Search,
+  CheckCircle,
+  XCircle,
+  AlertTriangle,
+  Clock,
   Filter,
   RefreshCw,
   FileText,
@@ -49,28 +49,14 @@ const AttendanceManagementByDate = () => {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
   useEffect(() => {
-    const handleResize = () => {
-      setIsMobile(window.innerWidth < 768);
-    };
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  useEffect(() => {
-    checkAccess();
-  }, []);
-
-  useEffect(() => {
-    if (currentUser) {
-      fetchWorkHoursSettings();
-    }
-  }, [currentUser]);
-
-  useEffect(() => {
-    if (selectedDate && currentUser) {
-      fetchAttendanceByDate(selectedDate);
-    }
-  }, [selectedDate, currentUser]);
+  useEffect(() => { checkAccess(); }, []);
+  useEffect(() => { if (currentUser) fetchWorkHoursSettings(); }, [currentUser]);
+  useEffect(() => { if (selectedDate && currentUser) fetchAttendanceByDate(selectedDate); }, [selectedDate, currentUser]);
 
   const checkAccess = async () => {
     try {
@@ -79,24 +65,18 @@ const AttendanceManagementByDate = () => {
         navigate('/login');
         return;
       }
-
       const { data: profile } = await supabase
         .from('profiles')
         .select('role')
         .eq('id', user.id)
         .single();
-
       if (!profile || profile.role !== 'admin') {
         navigate('/dashboard');
         return;
       }
-
       setCurrentUser(user);
       setProfile(profile);
-      await Promise.all([
-        fetchEmployees(),
-        fetchAttendanceByDate(new Date())
-      ]);
+      await Promise.all([fetchEmployees(), fetchAttendanceByDate(new Date())]);
     } catch (error) {
       console.error('Error checking access:', error);
       navigate('/login');
@@ -112,14 +92,8 @@ const AttendanceManagementByDate = () => {
         .select('setting_value')
         .eq('setting_key', 'work_hours')
         .single();
-
-      if (error && error.code !== 'PGRST116') {
-        throw error;
-      }
-
-      if (data?.setting_value) {
-        setWorkHoursSettings(prevSettings => ({ ...prevSettings, ...data.setting_value }));
-      }
+      if (error && error.code !== 'PGRST116') throw error;
+      if (data?.setting_value) setWorkHoursSettings(prev => ({ ...prev, ...data.setting_value }));
     } catch (error) {
       console.error('Error fetching work hours settings:', error);
     }
@@ -135,12 +109,8 @@ const AttendanceManagementByDate = () => {
           description: 'Standard working hours configuration',
           is_enabled: true,
           updated_at: new Date().toISOString()
-        }, {
-          onConflict: 'setting_key'
-        });
-
+        }, { onConflict: 'setting_key' });
       if (error) throw error;
-
       setSuccess('Pengaturan jam kerja berhasil disimpan!');
       setShowWorkHoursSettings(false);
       setTimeout(() => setSuccess(null), 3000);
@@ -156,7 +126,6 @@ const AttendanceManagementByDate = () => {
         .from('profiles')
         .select('id, name, email, employee_id, department, role, status')
         .order('name');
-
       if (error) throw error;
       setEmployees(data || []);
     } catch (error) {
@@ -164,14 +133,16 @@ const AttendanceManagementByDate = () => {
     }
   };
 
+  // PATCH: fix duplikasi "Tidak Hadir"
   const fetchAttendanceByDate = async (date) => {
     setContentLoading(true);
     try {
       const formattedDate = date.toISOString().split('T')[0];
       const startDateTime = `${formattedDate}T00:00:00`;
       const endDateTime = `${formattedDate}T23:59:59`;
-      
-      const { data, error } = await supabase
+
+      // Ambil data absensi untuk tanggal tsb
+      const { data: attendanceRows, error: attendanceError } = await supabase
         .from('attendance')
         .select(`
           *,
@@ -181,59 +152,93 @@ const AttendanceManagementByDate = () => {
         .lte('timestamp', endDateTime)
         .order('timestamp', { ascending: false });
 
-      if (error) throw error;
-      
+      if (attendanceError) throw attendanceError;
+
+      // Ambil karyawan aktif non-admin
       const { data: activeEmployees, error: empError } = await supabase
         .from('profiles')
         .select('id, name, email, employee_id, department, role, status')
         .eq('status', 'active')
         .neq('role', 'admin');
-      
+
       if (empError) throw empError;
-      
-      const presentEmployeeIds = new Set(
-        data
-          .filter(record => record.type === 'masuk' && record.status === 'berhasil')
-          .map(record => record.user_id)
-      );
-      
+
+      // Ambil user_id yang sudah punya record type 'absent' di tanggal tsb
+      const { data: existingAbsents, error: absentFetchError } = await supabase
+        .from('attendance')
+        .select('user_id')
+        .eq('type', 'absent')
+        .gte('timestamp', startDateTime)
+        .lte('timestamp', endDateTime);
+
+      if (absentFetchError) throw absentFetchError;
+
+      const existingAbsentUserIds = new Set((existingAbsents || []).map(rec => rec.user_id));
+
       const now = new Date();
       const isToday = formattedDate === now.toISOString().split('T')[0];
       const isPast = date < now;
-      
-      // Parse end time from settings
+
       const [endHour, endMinute] = workHoursSettings.endTime.split(':').map(Number);
       const endTimeToday = new Date();
       endTimeToday.setHours(endHour, endMinute, 0, 0);
-      
-      // Add 30 minutes buffer after end time before marking absent
       const absentMarkTime = new Date(endTimeToday);
       absentMarkTime.setMinutes(absentMarkTime.getMinutes() + 30);
-      
+
       const shouldMarkAbsent = isPast || (isToday && now >= absentMarkTime);
-      
-      if ((isToday && shouldMarkAbsent) || isPast) {
-        const absentEmployees = activeEmployees.filter(emp => 
-          !presentEmployeeIds.has(emp.id) && emp.role !== 'admin'
+
+      if (shouldMarkAbsent) {
+        const presentEmployeeIds = new Set(
+          attendanceRows
+            .filter(record => record.type === 'masuk' && record.status === 'berhasil')
+            .map(record => record.user_id)
         );
-        
-        const absentRecords = absentEmployees.map(emp => ({
-          id: `absent-${emp.id}-${formattedDate}`,
-          user_id: emp.id,
-          type: 'absent',
-          timestamp: `${formattedDate}T${absentMarkTime.toTimeString().slice(0, 8)}`,
-          status: 'tidak_hadir',
-          is_late: false,
-          late_minutes: 0,
-          work_hours: 0,
-          overtime_hours: 0,
-          profiles: emp,
-          notes: `Tidak hadir - tidak melakukan absensi masuk hingga ${absentMarkTime.toTimeString().slice(0, 5)}`
-        }));
-        
-        setAttendanceData([...data, ...absentRecords]);
+        // Karyawan yang benar-benar belum ada record apa pun di hari tsb DAN belum ada absent
+        const absentEmployees = activeEmployees.filter(emp => {
+          const hasAnyAttendance = attendanceRows.some(
+            record => record.user_id === emp.id && record.timestamp.startsWith(formattedDate)
+          );
+          return (
+            !presentEmployeeIds.has(emp.id) &&
+            !hasAnyAttendance &&
+            !existingAbsentUserIds.has(emp.id) &&
+            emp.role !== 'admin'
+          );
+        });
+        if (absentEmployees.length > 0) {
+          const absentRecords = absentEmployees.map(emp => ({
+            user_id: emp.id,
+            type: 'absent',
+            timestamp: `${formattedDate}T${absentMarkTime.toTimeString().slice(0, 8)}`,
+            status: 'tidak_hadir',
+            is_late: false,
+            late_minutes: 0,
+            work_hours: 0,
+            overtime_hours: 0,
+            notes: `Tidak hadir - tidak melakukan absensi masuk hingga ${absentMarkTime.toTimeString().slice(0, 5)}`
+          }));
+          const { error: insertError } = await supabase
+            .from('attendance')
+            .insert(absentRecords);
+          if (insertError) throw insertError;
+
+          // Re-fetch attendance data setelah insert
+          const { data: updatedAttendance, error: updatedError } = await supabase
+            .from('attendance')
+            .select(`
+              *,
+              profiles:user_id(id, name, email, employee_id, department, role, status)
+            `)
+            .gte('timestamp', startDateTime)
+            .lte('timestamp', endDateTime)
+            .order('timestamp', { ascending: false });
+          if (updatedError) throw updatedError;
+          setAttendanceData(updatedAttendance || []);
+        } else {
+          setAttendanceData(attendanceRows || []);
+        }
       } else {
-        setAttendanceData(data || []);
+        setAttendanceData(attendanceRows || []);
       }
     } catch (error) {
       console.error('Error fetching attendance by date:', error);
@@ -248,20 +253,17 @@ const AttendanceManagementByDate = () => {
   };
 
   const exportToCsv = () => {
-    if (attendanceData.length === 0) return;
-
+    if (filteredAttendance.length === 0) return;
     const headers = [
-      'Tanggal', 'Waktu', 'Karyawan', 'ID Karyawan', 'Departemen', 'Jenis', 'Status', 
+      'Tanggal', 'Waktu', 'Karyawan', 'ID Karyawan', 'Departemen', 'Jenis', 'Status',
       'Terlambat', 'Menit Terlambat', 'Jam Kerja', 'Lembur', 'Latitude', 'Longitude'
     ];
-
     const csvContent = [
       headers,
-      ...attendanceData.map(record => {
+      ...filteredAttendance.map(record => {
         const date = new Date(record.timestamp);
         const dateStr = date.toLocaleDateString('id-ID');
         const timeStr = date.toLocaleTimeString('id-ID');
-        
         return [
           dateStr,
           timeStr,
@@ -279,7 +281,6 @@ const AttendanceManagementByDate = () => {
         ];
       })
     ].map(row => row.join(',')).join('\n');
-
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
@@ -293,45 +294,29 @@ const AttendanceManagementByDate = () => {
 
   const getStatusColor = (status) => {
     switch (status) {
-      case 'berhasil':
-        return 'text-green-600 bg-green-100';
-      case 'wajah_tidak_valid':
-        return 'text-red-600 bg-red-100';
-      case 'lokasi_tidak_valid':
-        return 'text-yellow-600 bg-yellow-100';
-      case 'tidak_hadir':
-        return 'text-red-600 bg-red-100';
-      default:
-        return 'text-gray-600 bg-gray-100';
+      case 'berhasil': return 'text-green-600 bg-green-100';
+      case 'wajah_tidak_valid': return 'text-red-600 bg-red-100';
+      case 'lokasi_tidak_valid': return 'text-yellow-600 bg-yellow-100';
+      case 'tidak_hadir': return 'text-red-600 bg-red-100';
+      default: return 'text-gray-600 bg-gray-100';
     }
   };
-
   const getStatusIcon = (status) => {
     switch (status) {
-      case 'berhasil':
-        return <CheckCircle className="h-4 w-4" />;
+      case 'berhasil': return <CheckCircle className="h-4 w-4" />;
       case 'wajah_tidak_valid':
       case 'lokasi_tidak_valid':
-        return <XCircle className="h-4 w-4" />;
-      case 'tidak_hadir':
-        return <XCircle className="h-4 w-4" />;
-      default:
-        return <AlertTriangle className="h-4 w-4" />;
+      case 'tidak_hadir': return <XCircle className="h-4 w-4" />;
+      default: return <AlertTriangle className="h-4 w-4" />;
     }
   };
-
   const getStatusText = (status) => {
     switch (status) {
-      case 'berhasil':
-        return 'Berhasil';
-      case 'wajah_tidak_valid':
-        return 'Wajah Invalid';
-      case 'lokasi_tidak_valid':
-        return 'Lokasi Invalid';
-      case 'tidak_hadir':
-        return 'Tidak Hadir';
-      default:
-        return 'Gagal';
+      case 'berhasil': return 'Berhasil';
+      case 'wajah_tidak_valid': return 'Wajah Invalid';
+      case 'lokasi_tidak_valid': return 'Lokasi Invalid';
+      case 'tidak_hadir': return 'Tidak Hadir';
+      default: return 'Gagal';
     }
   };
 
@@ -341,7 +326,6 @@ const AttendanceManagementByDate = () => {
       minute: '2-digit'
     });
   };
-
   const formatDate = (date) => {
     return date.toLocaleDateString('id-ID', {
       day: 'numeric',
@@ -349,27 +333,33 @@ const AttendanceManagementByDate = () => {
       year: 'numeric'
     });
   };
-
   const handleWorkHoursChange = (e) => {
     const { name, value } = e.target;
-    setWorkHoursSettings(prev => ({
-      ...prev,
-      [name]: value
-    }));
+    setWorkHoursSettings(prev => ({ ...prev, [name]: value }));
   };
 
-  const filteredAttendance = attendanceData.filter(record => {
-    const matchesSearch = 
-      (record.profiles?.name && record.profiles.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (record.profiles?.email && record.profiles.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (record.profiles?.employee_id && record.profiles.employee_id.toLowerCase().includes(searchTerm.toLowerCase()));
-    
-    const matchesDepartment = !filterDepartment || record.profiles?.department === filterDepartment;
-    const matchesStatus = !filterStatus || record.status === filterStatus;
-    const matchesType = !filterType || record.type === filterType;
-    
-    return matchesSearch && matchesDepartment && matchesStatus && matchesType;
-  });
+  // PATCH: filter duplikat "absent" pada frontend (pencegahan sementara)
+  const filteredAttendance = attendanceData
+    .filter((record, idx, arr) =>
+      record.type !== 'absent'
+        ? true
+        : arr.findIndex(
+            r =>
+              r.user_id === record.user_id &&
+              r.type === 'absent' &&
+              r.timestamp.slice(0, 10) === record.timestamp.slice(0, 10)
+          ) === idx
+    )
+    .filter(record => {
+      const matchesSearch =
+        (record.profiles?.name && record.profiles.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (record.profiles?.email && record.profiles.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (record.profiles?.employee_id && record.profiles.employee_id.toLowerCase().includes(searchTerm.toLowerCase()));
+      const matchesDepartment = !filterDepartment || record.profiles?.department === filterDepartment;
+      const matchesStatus = !filterStatus || record.status === filterStatus;
+      const matchesType = !filterType || record.type === filterType;
+      return matchesSearch && matchesDepartment && matchesStatus && matchesType;
+    });
 
   const getDepartments = () => {
     const departments = [...new Set(employees.map(emp => emp.department).filter(Boolean))];
@@ -411,7 +401,6 @@ const AttendanceManagementByDate = () => {
                     Lihat dan kelola absensi karyawan berdasarkan tanggal
                   </p>
                 </div>
-                
                 {/* Action buttons */}
                 <div className="flex flex-wrap items-center gap-3">
                   <button
@@ -427,7 +416,7 @@ const AttendanceManagementByDate = () => {
                   </button>
                   <button
                     onClick={exportToCsv}
-                    disabled={attendanceData.length === 0}
+                    disabled={filteredAttendance.length === 0}
                     className="flex items-center justify-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm h-12"
                   >
                     <Download className="h-5 w-5" />
@@ -445,7 +434,7 @@ const AttendanceManagementByDate = () => {
             <div className="mb-4 p-4 bg-red-50 rounded-lg flex items-start space-x-3">
               <AlertTriangle className="h-6 w-6 text-red-500 flex-shrink-0 mt-0.5" />
               <p className="text-sm text-red-700 flex-1">{error}</p>
-              <button 
+              <button
                 onClick={() => setError(null)}
                 className="ml-auto text-red-500 hover:text-red-700"
               >
@@ -458,7 +447,7 @@ const AttendanceManagementByDate = () => {
             <div className="mb-4 p-4 bg-green-50 rounded-lg flex items-start space-x-3">
               <CheckCircle className="h-6 w-6 text-green-500 flex-shrink-0 mt-0.5" />
               <p className="text-sm text-green-700 flex-1">{success}</p>
-              <button 
+              <button
                 onClick={() => setSuccess(null)}
                 className="ml-auto text-green-500 hover:text-green-700"
               >
@@ -530,7 +519,6 @@ const AttendanceManagementByDate = () => {
 
                 {showFilters && (
                   <div className="grid grid-cols-1 gap-4 pt-3">
-
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Departemen</label>
                       <select
@@ -856,9 +844,10 @@ const AttendanceManagementByDate = () => {
                     Sistem akan otomatis menandai karyawan sebagai "Tidak Hadir" jika:
                   </p>
                   <ul className="text-sm text-blue-700 mt-2 space-y-1 pl-5 list-disc">
-                    <li>Sudah melewati jam keluar kerja</li>
+                    <li>Sudah melewati jam keluar kerja + 30 menit</li>
                     <li>Tidak ada catatan absensi masuk pada hari tersebut</li>
                     <li>Karyawan berstatus aktif (bukan admin)</li>
+                    <li>Belum ada catatan absensi untuk hari tersebut</li>
                   </ul>
                 </div>
 
