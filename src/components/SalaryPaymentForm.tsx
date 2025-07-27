@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import Swal from '../pages/swal';
+import Swal from 'sweetalert2';
 import { 
   DollarSign, 
   Calendar, 

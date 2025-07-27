@@ -15,7 +15,7 @@ import {
   XCircle,
   Briefcase
 } from 'lucide-react';
-import Swal from './swal';
+import Swal from 'sweetalert2';
 import { supabase } from '../utils/supabaseClient';
 import AdminSidebar from '../components/AdminSidebar';
 

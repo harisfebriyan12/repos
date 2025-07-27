@@ -20,7 +20,7 @@ import {
   XCircle
 } from 'lucide-react';
 import { supabase, uploadFile, getFileUrl } from '../utils/supabaseClient';
-import Swal from './swal';
+import Swal from 'sweetalert2';
 import ProfileModal from '../components/ProfileModal';
 import CustomFaceCapture from '../components/CustomFaceCapture';
 import AdminSidebar from '../components/AdminSidebar';
