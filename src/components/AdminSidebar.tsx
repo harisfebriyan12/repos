@@ -17,18 +17,12 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { supabase } from '../utils/supabaseClient';
-import { User, Profile } from '../types';
+import { useAuth } from '../App'; // Import useAuth
 
-interface AdminSidebarProps {
-  user: User | null;
-  profile: Profile | null;
-  isCollapsed: boolean;
-  setIsCollapsed: (isCollapsed: boolean) => void;
-}
-
-const AdminSidebar = ({ user, profile, isCollapsed, setIsCollapsed }: AdminSidebarProps) => {
+const AdminSidebar: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user, profile, isCollapsed, setIsCollapsed } = useAuth(); // Gunakan useAuth
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [expandedMenus, setExpandedMenus] = useState(['Kelola']);
   const [isMobile, setIsMobile] = useState(false);
@@ -47,11 +41,7 @@ const AdminSidebar = ({ user, profile, isCollapsed, setIsCollapsed }: AdminSideb
   const handleLogout = async () => {
     try {
       await supabase.auth.signOut();
-      await window.Swal.fire({
-        icon: 'success',
-        title: 'Logout Berhasil',
-        text: 'Anda telah keluar.',
-      });
+      // SweetAlert is not available on window, so we'll just navigate
       navigate('/login');
     } catch (error) {
       console.error('Logout gagal:', error);

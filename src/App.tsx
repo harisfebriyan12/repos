@@ -1,131 +1,132 @@
-import React, { useEffect, useState } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import React, { useEffect, useState, createContext, useContext } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { supabase } from './utils/supabaseClient';
-import { createClient } from '@supabase/supabase-js';
-import Login from './pages/Login';
-import Register from './pages/Register';
-import DashboardPage from './pages/DashboardPage';
-import AttendanceHistory from './pages/AttendanceHistory';
-import AdminDashboardPage from './pages/AdminDashboardPage';
+import { Session, User } from '@supabase/supabase-js';
+
+// Layouts
 import KaryawanLayout from './layouts/KaryawanLayout';
 import AdminLayout from './layouts/AdminLayout';
-import UserManagement from './pages/UserManagement';
-import SalaryPaymentManagement from './pages/SalaryPaymentManagement';
-import DepartmentManagement from './pages/DepartmentManagement';
-import PositionManagement from './pages/PositionManagement';
-import ProfileSetup from './pages/ProfileSetup';
-import LocationSettings from './pages/LocationSettings';
-import BankManagement from './pages/BankManagement';
-import AttendanceManagementByDate from './pages/AttendanceManagementByDate';
+
+// Pages
+import Login from './pages/Login';
+import Register from './pages/Register';
+
+// Karyawan Pages
+import DashboardPage from './pages/karyawan/DashboardPage';
+import AttendanceHistory from './pages/karyawan/AttendanceHistory';
+import ProfileSetup from './pages/karyawan/ProfileSetup';
+
+// Admin Pages
+import AdminDashboardPage from './pages/admin/AdminDashboardPage';
+import UserManagement from './pages/admin/UserManagement';
+import SalaryPaymentManagement from './pages/admin/SalaryPaymentManagement';
+import DepartmentManagement from './pages/admin/DepartmentManagement';
+import PositionManagement from './pages/admin/PositionManagement';
+import LocationSettings from './pages/admin/LocationSettings';
+import BankManagement from './pages/admin/BankManagement';
+import AttendanceManagement from './pages/admin/AttendanceManagement';
+
+// Components
+import ProtectedRoute from './components/auth/ProtectedRoute';
 import { LanguageProvider } from './utils/languageContext';
+import { Profile } from './types';
+
+// Auth Context
+interface AuthContextType {
+  session: Session | null;
+  user: User | null;
+  profile: Profile | null;
+  loading: boolean;
+  isCollapsed: boolean;
+  setIsCollapsed: React.Dispatch<React.SetStateAction<boolean>>;
+}
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+};
+
+const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [session, setSession] = useState<Session | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [isCollapsed, setIsCollapsed] = useState(false);
+
+  useEffect(() => {
+    const setData = async () => {
+      const { data: { session }, error } = await supabase.auth.getSession();
+      if (error) {
+        console.error("Error getting session:", error);
+        setLoading(false);
+        return;
+      }
+
+      setSession(session);
+      setUser(session?.user ?? null);
+
+      if (session?.user) {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+        
+        if (error) {
+          console.error("Error fetching profile:", error);
+        } else {
+          setProfile(data);
+        }
+      }
+      setLoading(false);
+    };
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      if (!session) {
+        setProfile(null);
+      }
+    });
+
+    setData();
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  const value = {
+    session,
+    user,
+    profile,
+    loading,
+    isCollapsed,
+    setIsCollapsed,
+  };
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+};
 
 function App() {
   return (
     <LanguageProvider>
-      <div className="flex flex-col min-h-screen">
-        <Router>
-          <AppContent />
-        </Router>
-      </div>
+      <Router>
+        <AuthProvider>
+          <AppRoutes />
+        </AuthProvider>
+      </Router>
     </LanguageProvider>
   );
 }
 
-import { User, Profile } from './types';
-
-function AppContent() {
-  const [session, setSession] = useState<{ user: User } | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [userRole, setUserRole] = useState<Profile['role'] | null>(null);
-  const [isCollapsed, setIsCollapsed] = useState(false);
-  const location = useLocation();
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    // Dapatkan session awal dengan error handling
-    supabase.auth.getSession().then(({ data: { session }, error }) => {
-      if (error) {
-        // Jika ada error (seperti user_not_found), clear session
-        console.error('Session error:', error);
-        supabase.auth.signOut();
-        setSession(null);
-      } else {
-        setSession(session);
-        
-        // Fetch user role if session exists
-        if (session) {
-          fetchUserRole(session.user.id);
-        }
-      }
-      setLoading(false);
-    }).catch((error) => {
-      // Handle any unexpected errors
-      console.error('Unexpected session error:', error);
-      supabase.auth.signOut();
-      setSession(null);
-      setLoading(false);
-    });
-
-    // Dengarkan perubahan auth
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      
-      // Fetch user role when session changes
-      if (session) {
-        fetchUserRole(session.user.id);
-      } else {
-        setUserRole(null);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  // Handle 404s by redirecting to home page
-  useEffect(() => {
-    // Check if the current path doesn't match any of our routes
-    const validPaths = [
-      '/login', '/register', '/dashboard', '/profile-setup', 
-      '/history', '/admin', '/admin/users', '/admin/departments', 
-      '/admin/positions', '/admin/salary-payment', '/admin/location', 
-      '/admin/bank', '/admin/attendance', '/'
-    ];
-    
-    const isValidPath = validPaths.some(path => {
-      // Check if current path starts with this valid path
-      return location.pathname === path || 
-             (path !== '/' && location.pathname.startsWith(path + '/'));
-    });
-    
-    if (!isValidPath && !loading) {
-      // Redirect to appropriate page based on user role
-      if (!session) {
-        navigate('/login');
-      } else if (userRole === 'admin') {
-        navigate('/admin');
-      } else {
-        navigate('/dashboard');
-      }
-    }
-  }, [location.pathname, loading, session, userRole, navigate]);
-
-  const fetchUserRole = async (userId) => {
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', userId)
-        .single();
-      
-      if (error) throw error;
-      setUserRole(data.role);
-    } catch (error) {
-      console.error('Error fetching user role:', error);
-      setUserRole(null);
-    }
-  };
+function AppRoutes() {
+  const { loading, session, profile } = useAuth();
 
   if (loading) {
     return (
@@ -142,84 +143,42 @@ function AppContent() {
     );
   }
 
+  const isAdmin = profile?.role === 'admin';
+  const isLoggedIn = !!session;
+
   return (
-    <div className="flex flex-col flex-1">
-      <Routes>
-        <Route 
-          path="/login" 
-          element={!session ? <Login /> : (userRole === 'admin' ? <Navigate to="/admin" replace /> : <Navigate to="/dashboard" replace />)} 
-        />
-        <Route 
-          path="/register" 
-          element={!session ? <Register /> : (userRole === 'admin' ? <Navigate to="/admin" replace /> : <Navigate to="/dashboard" replace />)} 
-        />
+    <Routes>
+      {/* Public Routes */}
+      <Route path="/login" element={!isLoggedIn ? <Login /> : <Navigate to={isAdmin ? '/admin' : '/dashboard'} replace />} />
+      <Route path="/register" element={!isLoggedIn ? <Register /> : <Navigate to={isAdmin ? '/admin' : '/dashboard'} replace />} />
+
+      {/* Karyawan Routes */}
+      <Route element={<ProtectedRoute isAllowed={isLoggedIn && !isAdmin} redirectTo="/login" />}>
         <Route element={<KaryawanLayout />}>
-          <Route
-            path="/dashboard"
-            element={session ? (userRole === 'admin' ? <Navigate to="/admin" replace /> : <DashboardPage />) : <Navigate to="/login" replace />}
-          />
+          <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/history" element={<AttendanceHistory />} />
+          <Route path="/profile-setup" element={<ProfileSetup />} />
         </Route>
-        <Route 
-          path="/profile-setup" 
-          element={session ? <ProfileSetup /> : <Navigate to="/login" replace />} 
-        />
-        <Route 
-          path="/history" 
-          element={session ? <AttendanceHistory /> : <Navigate to="/login" replace />} 
-        />
-        <Route element={<AdminLayout session={session} userRole={userRole} isCollapsed={isCollapsed} setIsCollapsed={setIsCollapsed} />}>
-          <Route
-            path="/admin"
-            element={session && userRole === 'admin' ? <AdminDashboardPage /> : <Navigate to={session ? "/dashboard" : "/login"} replace />}
-          />
+      </Route>
+
+      {/* Admin Routes */}
+      <Route element={<ProtectedRoute isAllowed={isLoggedIn && isAdmin} redirectTo="/dashboard" />}>
+        <Route element={<AdminLayout />}>
+          <Route path="/admin" element={<AdminDashboardPage />} />
+          <Route path="/admin/users" element={<UserManagement />} />
+          <Route path="/admin/departments" element={<DepartmentManagement />} />
+          <Route path="/admin/positions" element={<PositionManagement />} />
+          <Route path="/admin/salary-payment" element={<SalaryPaymentManagement />} />
+          <Route path="/admin/location" element={<LocationSettings />} />
+          <Route path="/admin/bank" element={<BankManagement />} />
+          <Route path="/admin/attendance" element={<AttendanceManagement />} />
         </Route>
-        <Route 
-          path="/admin/users" 
-          element={session && userRole === 'admin' ? <UserManagement /> : <Navigate to={session ? "/dashboard" : "/login"} replace />} 
-        />
-        <Route 
-          path="/admin/departments" 
-          element={session && userRole === 'admin' ? <DepartmentManagement /> : <Navigate to={session ? "/dashboard" : "/login"} replace />} 
-        />
-        <Route 
-          path="/admin/positions" 
-          element={session && userRole === 'admin' ? <PositionManagement /> : <Navigate to={session ? "/dashboard" : "/login"} replace />} 
-        />
-        <Route 
-          path="/admin/salary-payment" 
-          element={session && userRole === 'admin' ? <SalaryPaymentManagement /> : <Navigate to={session ? "/dashboard" : "/login"} replace />} 
-        />
-        <Route 
-          path="/admin/location" 
-          element={session && userRole === 'admin' ? <LocationSettings /> : <Navigate to={session ? "/dashboard" : "/login"} replace />} 
-        />
-        <Route 
-          path="/admin/bank" 
-          element={session && userRole === 'admin' ? <BankManagement /> : <Navigate to={session ? "/dashboard" : "/login"} replace />} 
-        />
-        <Route 
-          path="/admin/attendance" 
-          element={session && userRole === 'admin' ? <AttendanceManagementByDate /> : <Navigate to={session ? "/dashboard" : "/login"} replace />} 
-        />
-        <Route 
-          path="/" 
-          element={
-            !session ? <Navigate to="/login" replace /> : 
-            userRole === 'admin' ? <Navigate to="/admin" replace /> : 
-            <Navigate to="/dashboard" replace />
-          } 
-        />
-        {/* Catch-all route to handle 404s */}
-        <Route 
-          path="*" 
-          element={
-            !session ? <Navigate to="/login" replace /> : 
-            userRole === 'admin' ? <Navigate to="/admin" replace /> : 
-            <Navigate to="/dashboard" replace />
-          } 
-        />
-      </Routes>
-    </div>
+      </Route>
+
+      {/* Redirects and Catch-all */}
+      <Route path="/" element={<Navigate to={isLoggedIn ? (isAdmin ? '/admin' : '/dashboard') : '/login'} replace />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
 }
 
