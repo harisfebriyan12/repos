@@ -1,7 +1,7 @@
 import React, { useState, useEffect, lazy, Suspense, useRef } from 'react';
 import Swal from 'sweetalert2';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
-import { LogIn, Mail, Lock, AlertCircle, Building2, CheckCircle, Eye, EyeOff } from 'lucide-react';
+import { LogIn, Mail, Lock, AlertCircle, CheckCircle, Eye, EyeOff } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../utils/supabaseClient';
 import RecaptchaInfo from '../components/RecaptchaInfo';
 
@@ -47,7 +47,7 @@ const Login = () => {
         icon: 'warning', 
         title: 'Form Tidak Lengkap', 
         text: 'Silakan isi email dan password',
-        confirmButtonColor: '#3b82f6'
+        confirmButtonColor: '#1e40af'
       });
       return false;
     }
@@ -62,7 +62,7 @@ const Login = () => {
             <p class="mt-2 text-sm text-gray-600">Centang reCAPTCHA untuk melanjutkan.</p>
           </div>
         `,
-        confirmButtonColor: '#3b82f6'
+        confirmButtonColor: '#1e40af'
       });
       return false;
     }
@@ -176,7 +176,7 @@ const Login = () => {
             ) : ''}
           </div>
         `,
-        confirmButtonColor: '#3b82f6'
+        confirmButtonColor: '#1e40af'
       });
 
       resetFormState();
@@ -207,23 +207,26 @@ const Login = () => {
       icon: 'error',
       title: 'Verifikasi Gagal',
       text: 'Terjadi kesalahan saat memverifikasi reCAPTCHA. Silakan coba lagi.',
-      confirmButtonColor: '#3b82f6'
+      confirmButtonColor: '#1e40af'
     });
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 py-8 bg-gray-100">
-      <div className="w-full max-w-md">
-
+    <div className="min-h-screen flex items-center justify-center px-4 py-8 bg-gradient-to-br from-blue-50 to-indigo-100 animate-gradient">
+      <div className="w-full max-w-md mx-auto">
         {/* Login Form */}
-        <div className="bg-white rounded-xl shadow-xl p-8">
+        <div className="bg-white rounded-2xl shadow-2xl p-8 transform transition-all duration-300 hover:shadow-3xl">
           <div className="mb-8 text-center">
-            <h2 className="text-2xl font-bold text-gray-900">Masuk ke Akun Anda</h2>
-            <p className="text-gray-500 mt-2">Silakan login menggunakan email dan password</p>
+            <div className="flex justify-center mb-4">
+              <div className="p-3 bg-blue-100 rounded-full">
+                <LogIn className="h-8 w-8 text-blue-600" />
+              </div>
+            </div>
+            <h2 className="text-3xl font-bold text-gray-900 font-poppins">Masuk ke Akun Anda</h2>
           </div>
 
           {!isSupabaseConfigured() && (
-            <div className="mb-6 p-4 bg-yellow-50 rounded-lg flex items-start space-x-3">
+            <div className="mb-6 p-4 bg-yellow-50 rounded-lg flex items-start space-x-3 animate-pulse">
               <AlertCircle className="h-5 w-5 text-yellow-600 mt-0.5" />
               <div>
                 <p className="text-yellow-800 font-medium">Sistem Belum Dikonfigurasi</p>
@@ -235,7 +238,7 @@ const Login = () => {
           )}
 
           {successMessage && (
-            <div className="mb-6 p-4 bg-green-50 rounded-lg flex items-start space-x-3">
+            <div className="mb-6 p-4 bg-green-50 rounded-lg flex items-start space-x-3 animate-slide-in">
               <CheckCircle className="h-5 w-5 text-green-600 mt-0.5" />
               <p className="text-green-800 font-medium">{successMessage}</p>
             </div>
@@ -244,11 +247,11 @@ const Login = () => {
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Email Field */}
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2 font-poppins">
                 Alamat Email
               </label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+              <div className="relative group">
+                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
                 <input
                   type="email"
                   id="email"
@@ -256,19 +259,20 @@ const Login = () => {
                   value={formData.email}
                   onChange={handleChange}
                   required
-                  className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white transition-colors"
+                  className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white transition-all duration-200 hover:border-blue-300 placeholder-gray-400 font-poppins"
                   placeholder="Masukkan email Anda"
+                  aria-label="Alamat Email"
                 />
               </div>
             </div>
 
             {/* Password Field */}
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2 font-poppins">
                 Password
               </label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+              <div className="relative group">
+                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
                 <input
                   type={showPassword ? "text" : "password"}
                   id="password"
@@ -276,12 +280,13 @@ const Login = () => {
                   value={formData.password}
                   onChange={handleChange}
                   required
-                  className="w-full pl-10 pr-10 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white transition-colors"
+                  className="w-full pl-10 pr-12 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white transition-all duration-200 hover:border-blue-300 placeholder-gray-400 font-poppins"
                   placeholder="Masukkan password Anda"
+                  aria-label="Password"
                 />
                 <button
                   type="button"
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1"
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-blue-500 p-1 transition-colors"
                   onClick={() => setShowPassword(!showPassword)}
                   aria-label={showPassword ? "Sembunyikan password" : "Tampilkan password"}
                 >
@@ -290,11 +295,13 @@ const Login = () => {
               </div>
             </div>
 
+        
+
             {/* ReCAPTCHA */}
             <div className="flex justify-center">
               <Suspense fallback={
                 <div className="h-20 w-full flex items-center justify-center bg-gray-50 rounded-lg">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                  <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-blue-500"></div>
                 </div>
               }>
                 <ReCAPTCHA
@@ -305,7 +312,7 @@ const Login = () => {
                   onErrored={handleCaptchaError}
                   theme="light"
                   size="normal"
-                  className="mx-auto"
+                  className="mx-auto transform transition-all duration-300"
                   onLoad={() => setIsCaptchaLoaded(true)}
                 />
               </Suspense>
@@ -315,10 +322,9 @@ const Login = () => {
             <button
               type="submit"
               disabled={isLoading || !isSupabaseConfigured()}
-              className={`w-full py-3 px-4 rounded-lg font-semibold text-white
-                         ${isLoading ? 'bg-blue-400 cursor-wait' : 'bg-blue-600 hover:bg-blue-700'}
-                         ${!isSupabaseConfigured() ? 'opacity-70 cursor-not-allowed' : ''}
-                         focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200`}
+              className={`w-full py-3 px-4 rounded-lg font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-300 transform hover:scale-105 font-poppins
+                         ${isLoading ? 'opacity-70 cursor-wait' : ''}
+                         ${!isSupabaseConfigured() ? 'opacity-70 cursor-not-allowed' : ''}`}
             >
               {isLoading ? (
                 <span className="flex items-center justify-center">
@@ -330,16 +336,56 @@ const Login = () => {
                 </span>
               ) : (
                 <span className="flex items-center justify-center">
-                  <LogIn className="h-5 w-5 mr-2" />
+                
                   Masuk
                 </span>
               )}
             </button>
           </form>
-
-      
         </div>
+
+        
       </div>
+
+      {/* Custom CSS for Animations and Gradient Background */}
+      <style jsx>{`
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap');
+
+        .font-poppins {
+          font-family: 'Poppins', sans-serif;
+        }
+
+        .animate-gradient {
+          background: linear-gradient(45deg, #eff6ff, #dbeafe, #e0e7ff, #c7d2fe);
+          background-size: 400%;
+          animation: gradient 15s ease infinite;
+        }
+
+        @keyframes gradient {
+          0% { background-position: 0% 50%; }
+          50% { background-position: 100% 50%; }
+          100% { background-position: 0% 50%; }
+        }
+
+        .animate-slide-in {
+          animation: slideIn 0.5s ease-out;
+        }
+
+        @keyframes slideIn {
+          from {
+            opacity: 0;
+            transform: translateY(10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        .shadow-3xl {
+          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+        }
+      `}</style>
     </div>
   );
 };

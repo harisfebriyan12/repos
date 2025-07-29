@@ -1,729 +1,738 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Calendar, Filter, Download, CheckCircle, XCircle, AlertTriangle, Users, RefreshCw, MapPin } from 'lucide-react';
-import { supabase } from '../utils/supabaseClient';
+import {
+  Users,
+  Download,
+  Search,
+  CheckCircle,
+  XCircle,
+  AlertTriangle,
+  Clock,
+  Filter,
+  RefreshCw,
+  FileText,
+  MapPin,
+  Settings,
+  Save,
+  X,
+  Bell,
+  ChevronDown,
+  ChevronUp,
+  Trash2,
+  ChevronLeft,
+  ChevronRight
+} from 'lucide-react';
 import Swal from 'sweetalert2';
+import { supabase } from '../utils/supabaseClient';
+import AdminSidebar from '../components/AdminSidebar';
 
-// Define TypeScript interfaces for type safety
+// Type definitions
 interface Profile {
   id: string;
   name: string;
   email: string;
   employee_id: string | null;
   department: string | null;
-  role?: string;
+  role: string;
+  status: string;
 }
 
-interface AttendanceRecord {
+interface Attendance {
   id: string;
   user_id: string;
+  type: 'masuk' | 'keluar' | 'absent';
   timestamp: string;
-  type: 'masuk' | 'keluar' | 'tidak_hadir';
   status: 'berhasil' | 'wajah_tidak_valid' | 'lokasi_tidak_valid' | 'tidak_hadir';
   is_late: boolean;
-  late_minutes: number | null;
-  work_hours: number | null;
-  overtime_hours: number | null;
+  late_minutes: number;
+  work_hours: number;
+  overtime_hours: number;
   latitude: number | null;
   longitude: number | null;
-  profiles?: Profile;
+  notes: string | null;
+  profiles: Profile | null;
 }
 
-interface Filters {
-  startDate: string;
-  endDate: string;
-  type: string;
-  status: string;
-  employeeId: string;
+interface WorkHoursSettings {
+  startTime: string;
+  endTime: string;
+  lateThreshold: number;
+  earlyLeaveThreshold: number;
+  breakDuration: number;
 }
 
-const AttendanceHistory: React.FC = () => {
+const AttendanceManagementByDate: React.FC = () => {
   const navigate = useNavigate();
-  const [user, setUser] = useState<any>(null);
-  const [userRole, setUserRole] = useState<string | null>(null);
-  const [attendanceData, setAttendanceData] = useState<AttendanceRecord[]>([]);
-  const [filteredData, setFilteredData] = useState<AttendanceRecord[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [profile, setProfile] = useState<any>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [contentLoading, setContentLoading] = useState<boolean>(false);
+  const [attendanceData, setAttendanceData] = useState<Attendance[]>([]);
   const [employees, setEmployees] = useState<Profile[]>([]);
-  const [selectedRecord, setSelectedRecord] = useState<AttendanceRecord | null>(null);
-  const [selectedEmployee, setSelectedEmployee] = useState('all');
-  const [filters, setFilters] = useState<Filters>({
-    startDate: '',
-    endDate: '',
-    type: '',
-    status: '',
-    employeeId: '',
+  const [searchTerm, setSearchTerm] = useState<string>('');
+  const [filterDepartment, setFilterDepartment] = useState<string>('');
+  const [filterStatus, setFilterStatus] = useState<string>('');
+  const [filterType, setFilterType] = useState<string>('');
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [showWorkHoursSettings, setShowWorkHoursSettings] = useState<boolean>(false);
+  const [workHoursSettings, setWorkHoursSettings] = useState<WorkHoursSettings>({
+    startTime: '08:00',
+    endTime: '17:00',
+    lateThreshold: 15,
+    earlyLeaveThreshold: 15,
+    breakDuration: 60
   });
+  const [showFilters, setShowFilters] = useState<boolean>(false);
+  const [isMobile, setIsMobile] = useState<boolean>(window.innerWidth < 768);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const recordsPerPage = 10;
 
-  // Check user authentication and role
-  const checkUser = async () => {
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
+    checkAccess();
+  }, []);
+
+  useEffect(() => {
+    if (currentUser) fetchWorkHoursSettings();
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (selectedDate && currentUser) fetchAttendanceByDate(selectedDate);
+  }, [selectedDate, currentUser]);
+
+  const checkAccess = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         navigate('/login');
         return;
       }
-
-      setUser(user);
-
-      const { data: profile, error: profileError } = await supabase
+      const { data: profileData, error: profileError } = await supabase
         .from('profiles')
         .select('role')
         .eq('id', user.id)
         .single();
-
       if (profileError) throw profileError;
-      setUserRole(profile.role);
-
-      if (profile.role === 'admin') {
-        await Promise.all([fetchEmployees(), fetchAllAttendance()]);
-      } else {
-        await fetchAttendanceHistory(user.id);
+      if (!profileData || profileData.role !== 'admin') {
+        navigate('/dashboard');
+        return;
       }
-    } catch (error) {
-      console.error('Error checking user:', error);
-      Swal.fire({
-        icon: 'error',
-        title: 'Gagal Memuat',
-        text: 'Terjadi kesalahan saat memuat data pengguna.',
-      });
+      setCurrentUser(user);
+      setProfile(profileData);
+      await Promise.all([fetchEmployees(), fetchAttendanceByDate(new Date())]);
+    } catch (error: any) {
+      console.error('Error checking access:', error);
+      setError('Gagal memeriksa akses pengguna');
       navigate('/login');
     } finally {
       setLoading(false);
     }
   };
 
-  // Fetch all employees for admin
+  const fetchWorkHoursSettings = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('system_settings')
+        .select('setting_value')
+        .eq('setting_key', 'work_hours')
+        .single();
+      if (error && error.code !== 'PGRST116') throw error;
+      if (data?.setting_value) setWorkHoursSettings(prev => ({ ...prev, ...data.setting_value }));
+    } catch (error: any) {
+      console.error('Error fetching work hours settings:', error);
+      setError('Gagal memuat pengaturan jam kerja');
+    }
+  };
+
+  const saveWorkHoursSettings = async () => {
+    try {
+      const { error } = await supabase
+        .from('system_settings')
+        .upsert({
+          setting_key: 'work_hours',
+          setting_value: workHoursSettings,
+          description: 'Standard working hours configuration',
+          is_enabled: true,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'setting_key' });
+      if (error) throw error;
+      Swal.fire({
+        icon: 'success',
+        title: 'Berhasil',
+        text: 'Pengaturan jam kerja berhasil disimpan!'
+      });
+      setShowWorkHoursSettings(false);
+    } catch (error: any) {
+      console.error('Error saving work hours settings:', error);
+      Swal.fire({
+        icon: 'error',
+        title: 'Gagal',
+        text: `Gagal menyimpan pengaturan jam kerja: ${error.message}`
+      });
+    }
+  };
+
   const fetchEmployees = async () => {
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, name, email, employee_id, department')
+        .select('id, name, email, employee_id, department, role, status')
         .order('name');
-
       if (error) throw error;
       setEmployees(data || []);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching employees:', error);
-      Swal.fire({
-        icon: 'error',
-        title: 'Gagal Memuat',
-        text: 'Terjadi kesalahan saat memuat data karyawan.',
-      });
+      setError('Gagal memuat data karyawan');
     }
   };
 
-  // Fetch all attendance records for admin
-  const fetchAllAttendance = async () => {
+  const fetchAttendanceByDate = async (date: Date) => {
+    setContentLoading(true);
     try {
-      const { data, error } = await supabase
+      const formattedDate = date.toISOString().split('T')[0];
+      const startDateTime = `${formattedDate}T00:00:00`;
+      const endDateTime = `${formattedDate}T23:59:59`;
+
+      const { data: attendanceRows, error: attendanceError } = await supabase
         .from('attendance')
         .select(`
           *,
-          profiles:user_id(id, name, email, employee_id, department)
+          profiles:user_id(id, name, email, employee_id, department, role, status)
         `)
-        .order('timestamp', { ascending: false })
-        .limit(500);
-
-      if (error) throw error;
-      setAttendanceData(data || []);
-    } catch (error) {
-      console.error('Error fetching all attendance:', error);
-      Swal.fire({
-        icon: 'error',
-        title: 'Gagal Memuat',
-        text: 'Terjadi kesalahan saat memuat data absensi.',
-      });
-    }
-  };
-
-  // Fetch attendance history for a specific user
-  const fetchAttendanceHistory = async (userId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('attendance')
-        .select('*')
-        .eq('user_id', userId)
+        .gte('timestamp', startDateTime)
+        .lte('timestamp', endDateTime)
         .order('timestamp', { ascending: false });
 
-      if (error) throw error;
-      setAttendanceData(data || []);
-    } catch (error) {
-      console.error('Error fetching attendance history:', error);
-      Swal.fire({
-        icon: 'error',
-        title: 'Gagal Memuat',
-        text: 'Terjadi kesalahan saat memuat riwayat absensi.',
-      });
-    }
-  };
+      if (attendanceError) throw attendanceError;
 
-  // Apply filters to attendance data
-  const applyFilters = useCallback(() => {
-    let filtered = [...attendanceData];
+      const { data: activeEmployees, error: empError } = await supabase
+        .from('profiles')
+        .select('id, name, email, employee_id, department, role, status')
+        .eq('status', 'active')
+        .neq('role', 'admin');
 
-    filtered = filtered.filter(record => 
-      record.type === 'masuk' || record.type === 'keluar'
-    );
+      if (empError) throw empError;
 
-    if (userRole === 'admin' && selectedEmployee !== 'all') {
-      filtered = filtered.filter(record => record.user_id === selectedEmployee);
-    }
+      const { data: existingAbsents, error: absentFetchError } = await supabase
+        .from('attendance')
+        .select('user_id')
+        .eq('type', 'absent')
+        .gte('timestamp', startDateTime)
+        .lte('timestamp', endDateTime);
 
-    if (filters.startDate) {
-      filtered = filtered.filter(record => 
-        new Date(record.timestamp) >= new Date(filters.startDate)
-      );
-    }
+      if (absentFetchError) throw absentFetchError;
 
-    if (filters.endDate) {
-      const endDate = new Date(filters.endDate);
-      endDate.setHours(23, 59, 59, 999);
-      filtered = filtered.filter(record => 
-        new Date(record.timestamp) <= endDate
-      );
-    }
+      const existingAbsentUserIds = new Set((existingAbsents || []).map(rec => rec.user_id));
 
-    if (filters.type) {
-      filtered = filtered.filter(record => record.type === filters.type);
-    }
+      const now = new Date();
+      const isToday = formattedDate === now.toISOString().split('T')[0];
+      const isPast = date < now;
 
-    if (filters.status) {
-      filtered = filtered.filter(record => record.status === filters.status);
-    }
+      const [endHour, endMinute] = workHoursSettings.endTime.split(':').map(Number);
+      const endTimeToday = new Date();
+      endTimeToday.setHours(endHour, endMinute, 0, 0);
+      const absentMarkTime = new Date(endTimeToday);
+      absentMarkTime.setMinutes(absentMarkTime.getMinutes() + 30);
 
-    setFilteredData(filtered);
-  }, [attendanceData, filters, selectedEmployee, userRole]);
+      const shouldMarkAbsent = isPast || (isToday && now >= absentMarkTime);
 
-  // Handle filter input changes
-  const handleFilterChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    setFilters({
-      ...filters,
-      [e.target.name]: e.target.value,
-    });
-  };
+      if (shouldMarkAbsent) {
+        const presentEmployeeIds = new Set(
+          attendanceRows
+            .filter(record => record.type === 'masuk' && record.status === 'berhasil')
+            .map(record => record.user_id)
+        );
+        const absentEmployees = activeEmployees.filter(emp => {
+          const hasAnyAttendance = attendanceRows.some(
+            record => record.user_id === emp.id && record.timestamp.startsWith(formattedDate)
+          );
+          return (
+            !presentEmployeeIds.has(emp.id) &&
+            !hasAnyAttendance &&
+            !existingAbsentUserIds.has(emp.id) &&
+            emp.role !== 'admin'
+          );
+        });
+        if (absentEmployees.length > 0) {
+          const absentRecords = absentEmployees.map(emp => ({
+            user_id: emp.id,
+            type: 'absent' as const,
+            timestamp: `${formattedDate}T${absentMarkTime.toTimeString().slice(0, 8)}`,
+            status: 'tidak_hadir' as const,
+            is_late: false,
+            late_minutes: 0,
+            work_hours: 0,
+            overtime_hours: 0,
+            notes: `Tidak hadir - tidak melakukan absensi masuk hingga ${absentMarkTime.toTimeString().slice(0, 5)}`
+          }));
+          const { error: insertError } = await supabase
+            .from('attendance')
+            .insert(absentRecords);
+          if (insertError) throw insertError;
 
-  // Handle employee selection
-  const handleEmployeeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setSelectedEmployee(e.target.value);
-  };
-
-  // Clear all filters
-  const clearFilters = () => {
-    setFilters({
-      startDate: '',
-      endDate: '',
-      type: '',
-      status: '',
-      employeeId: '',
-    });
-    setSelectedEmployee('all');
-  };
-
-  // Refresh data
-  const refreshData = async () => {
-    setLoading(true);
-    try {
-      if (userRole === 'admin') {
-        await fetchAllAttendance();
+          const { data: updatedAttendance, error: updatedError } = await supabase
+            .from('attendance')
+            .select(`
+              *,
+              profiles:user_id(id, name, email, employee_id, department, role, status)
+            `)
+            .gte('timestamp', startDateTime)
+            .lte('timestamp', endDateTime)
+            .order('timestamp', { ascending: false });
+          if (updatedError) throw updatedError;
+          setAttendanceData(updatedAttendance || []);
+        } else {
+          setAttendanceData(attendanceRows || []);
+        }
       } else {
-        await fetchAttendanceHistory(user.id);
+        setAttendanceData(attendanceRows || []);
       }
-    } catch (error) {
-      console.error('Error refreshing data:', error);
+    } catch (error: any) {
+      console.error('Error fetching attendance by date:', error);
+      setError('Gagal memuat data absensi');
+    } finally {
+      setContentLoading(false);
+    }
+  };
+
+  const handleDeleteAll = async () => {
+    const formattedDate = selectedDate.toISOString().split('T')[0];
+    const result = await Swal.fire({
+      title: 'Hapus Semua Data Absensi?',
+      text: `Apakah Anda yakin ingin menghapus semua data absensi untuk tanggal ${formatDate(selectedDate)}? Tindakan ini tidak dapat dibatalkan.`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#d33',
+      cancelButtonColor: '#3085d6',
+      confirmButtonText: 'Ya, Hapus Semua',
+      cancelButtonText: 'Batal'
+    });
+
+    if (!result.isConfirmed) return;
+
+    setContentLoading(true);
+    try {
+      const { error } = await supabase
+        .from('attendance')
+        .delete()
+        .gte('timestamp', `${formattedDate}T00:00:00`)
+        .lte('timestamp', `${formattedDate}T23:59:59`);
+
+      if (error) throw error;
+      await fetchAttendanceByDate(selectedDate);
+      Swal.fire({
+        icon: 'success',
+        title: 'Berhasil',
+        text: `Semua data absensi untuk ${formatDate(selectedDate)} berhasil dihapus`
+      });
+    } catch (error: any) {
+      console.error('Error deleting all attendance data:', error);
       Swal.fire({
         icon: 'error',
-        title: 'Gagal Refresh',
-        text: 'Terjadi kesalahan saat memperbarui data.',
+        title: 'Gagal',
+        text: `Gagal menghapus data absensi: ${error.message}`
       });
     } finally {
-      setLoading(false);
+      setContentLoading(false);
     }
   };
 
-  // Export data to CSV
-  const exportToCsv = async () => {
-    if (filteredData.length === 0) {
-      await Swal.fire({
-        icon: 'info',
+  const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    if (val) setSelectedDate(new Date(val));
+    setCurrentPage(1);
+  };
+
+  const exportToCsv = () => {
+    if (filteredAttendance.length === 0) {
+      Swal.fire({
+        icon: 'warning',
         title: 'Tidak Ada Data',
-        text: 'Tidak ada data absensi untuk diexport.',
+        text: 'Tidak ada data absensi untuk diekspor'
       });
       return;
     }
+    const headers = [
+      'Tanggal', 'Waktu', 'Karyawan', 'ID Karyawan', 'Departemen', 'Jenis', 'Status',
+      'Terlambat', 'Menit Terlambat', 'Jam Kerja', 'Lembur', 'Latitude', 'Longitude'
+    ];
+    const csvContent = [
+      headers,
+      ...filteredAttendance.map(record => {
+        const date = new Date(record.timestamp);
+        const dateStr = date.toLocaleDateString('id-ID');
+        const timeStr = date.toLocaleTimeString('id-ID');
+        return [
+          dateStr,
+          timeStr,
+          record.profiles?.name || 'Unknown',
+          record.profiles?.employee_id || '-',
+          record.profiles?.department || '-',
+          record.type === 'masuk' ? 'Masuk' : record.type === 'keluar' ? 'Keluar' : 'Tidak Hadir',
+          record.status,
+          record.is_late ? 'Ya' : 'Tidak',
+          record.late_minutes?.toString() || '0',
+          record.work_hours?.toString() || '0',
+          record.overtime_hours?.toString() || '0',
+          record.latitude !== null && record.latitude !== undefined ? record.latitude.toString() : '',
+          record.longitude !== null && record.longitude !== undefined ? record.longitude.toString() : ''
+        ];
+      })
+    ].map(row => row.join(',')).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `attendance_${selectedDate.toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
-    try {
-      const headers = userRole === 'admin'
-        ? ['Tanggal', 'Waktu', 'Karyawan', 'Departemen', 'Jenis', 'Status', 'Terlambat', 'Menit Terlambat', 'Jam Kerja', 'Lembur', 'Latitude', 'Longitude']
-        : ['Tanggal', 'Waktu', 'Jenis', 'Status', 'Terlambat', 'Menit Terlambat', 'Jam Kerja', 'Lembur', 'Latitude', 'Longitude'];
-
-      const csvContent = [
-        headers,
-        ...filteredData.map(record => {
-          const date = new Date(record.timestamp);
-          const dateStr = date.toLocaleDateString('id-ID');
-          const timeStr = date.toLocaleTimeString('id-ID');
-          return userRole === 'admin'
-            ? [
-                dateStr,
-                timeStr,
-                record.profiles?.name || 'Unknown',
-                record.profiles?.department || '-',
-                record.type === 'masuk' ? 'Masuk' : record.type === 'keluar' ? 'Keluar' : 'Tidak Hadir',
-                record.status,
-                record.is_late ? 'Ya' : 'Tidak',
-                record.late_minutes ?? '0',
-                record.work_hours ?? '0',
-                record.overtime_hours ?? '0',
-                record.latitude ?? '',
-                record.longitude ?? '',
-              ]
-            : [
-                dateStr,
-                timeStr,
-                record.type === 'masuk' ? 'Masuk' : record.type === 'keluar' ? 'Keluar' : 'Tidak Hadir',
-                record.status,
-                record.is_late ? 'Ya' : 'Tidak',
-                record.late_minutes ?? '0',
-                record.work_hours ?? '0',
-                record.overtime_hours ?? '0',
-                record.latitude ?? '',
-                record.longitude ?? '',
-              ];
-        }),
-      ].map(row => row.join(',')).join('\n');
-
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const link = document.createElement('a');
-      const url = URL.createObjectURL(blob);
-      link.setAttribute('href', url);
-      link.setAttribute('download', `attendance_report_${new Date().toISOString().split('T')[0]}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-
-      await Swal.fire({
-        icon: 'success',
-        title: 'Export Berhasil',
-        text: 'Data absensi berhasil diexport ke CSV.',
-      });
-    } catch (err) {
-      console.error('Error exporting to CSV:', err);
-      await Swal.fire({
-        icon: 'error',
-        title: 'Export Gagal',
-        text: 'Terjadi kesalahan saat export data absensi.',
-      });
+  const getStatusColor = (status: string): string => {
+    switch (status) {
+      case 'berhasil': return 'text-green-600 bg-green-100';
+      case 'wajah_tidak_valid': return 'text-red-600 bg-red-100';
+      case 'lokasi_tidak_valid': return 'text-yellow-600 bg-yellow-100';
+      case 'tidak_hadir': return 'text-red-600 bg-red-100';
+      default: return 'text-gray-600 bg-gray-100';
     }
   };
 
-  // Get status color
-  const getStatusColor = (status: string) => {
+  const getStatusIcon = (status: string): JSX.Element => {
     switch (status) {
-      case 'berhasil':
-        return 'text-green-600 bg-green-100';
-      case 'wajah_tidak_valid':
-        return 'text-red-600 bg-red-100';
-      case 'lokasi_tidak_valid':
-        return 'text-yellow-600 bg-yellow-100';
-      case 'tidak_hadir':
-        return 'text-red-600 bg-red-100';
-      default:
-        return 'text-gray-600 bg-gray-100';
-    }
-  };
-
-  // Get status icon
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'berhasil':
-        return <CheckCircle className="h-4 w-4" />;
+      case 'berhasil': return <CheckCircle className="h-4 w-4" />;
       case 'wajah_tidak_valid':
       case 'lokasi_tidak_valid':
-      case 'tidak_hadir':
-        return <XCircle className="h-4 w-4" />;
-      default:
-        return <AlertTriangle className="h-4 w-4" />;
+      case 'tidak_hadir': return <XCircle className="h-4 w-4" />;
+      default: return <AlertTriangle className="h-4 w-4" />;
     }
   };
 
-  // Get status text
-  const getStatusText = (status: string) => {
+  const getStatusText = (status: string): string => {
     switch (status) {
-      case 'berhasil':
-        return 'Berhasil';
-      case 'wajah_tidak_valid':
-        return 'Wajah Invalid';
-      case 'lokasi_tidak_valid':
-        return 'Lokasi Invalid';
-      case 'tidak_hadir':
-        return 'Tidak Hadir';
-      default:
-        return 'Gagal';
+      case 'berhasil': return 'Berhasil';
+      case 'wajah_tidak_valid': return 'Wajah Invalid';
+      case 'lokasi_tidak_valid': return 'Lokasi Invalid';
+      case 'tidak_hadir': return 'Tidak Hadir';
+      default: return 'Gagal';
     }
   };
 
-  // Format date and time
-  const formatDateTime = (timestamp: string) => {
-    const date = new Date(timestamp);
-    return {
-      date: date.toLocaleDateString('id-ID', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-      }),
-      time: date.toLocaleTimeString('id-ID', {
-        hour: '2-digit',
-        minute: '2-digit',
-      }),
-    };
+  const formatTime = (timestamp: string): string => {
+    return new Date(timestamp).toLocaleTimeString('id-ID', {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
   };
 
-  // Run checkUser on component mount
-  useEffect(() => {
-    checkUser();
-  }, []);
+  const formatDate = (date: Date): string => {
+    return date.toLocaleDateString('id-ID', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    });
+  };
 
-  // Apply filters when dependencies change
-  useEffect(() => {
-    applyFilters();
-  }, [applyFilters]);
+  const handleWorkHoursChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setWorkHoursSettings(prev => ({ ...prev, [name]: isNaN(Number(value)) ? value : Number(value) }));
+  };
+
+  const filteredAttendance = attendanceData
+    .filter((record, idx, arr) =>
+      record.type !== 'absent'
+        ? true
+        : arr.findIndex(
+            r =>
+              r.user_id === record.user_id &&
+              r.type === 'absent' &&
+              r.timestamp.slice(0, 10) === record.timestamp.slice(0, 10)
+          ) === idx
+    )
+    .filter(record => {
+      const matchesSearch =
+        (record.profiles?.name && record.profiles.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (record.profiles?.email && record.profiles.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (record.profiles?.employee_id && record.profiles.employee_id.toLowerCase().includes(searchTerm.toLowerCase()));
+      const matchesDepartment = !filterDepartment || record.profiles?.department === filterDepartment;
+      const matchesStatus = !filterStatus || record.status === filterStatus;
+      const matchesType = !filterType || record.type === filterType;
+      return matchesSearch && matchesDepartment && matchesStatus && matchesType;
+    });
+
+  const getDepartments = (): string[] => {
+    return [...new Set(employees.map(emp => emp.department).filter(Boolean) as string[])];
+  };
+
+  const paginatedAttendance = filteredAttendance.slice((currentPage - 1) * recordsPerPage, currentPage * recordsPerPage);
+  const totalPages = Math.ceil(filteredAttendance.length / recordsPerPage);
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
         <div className="text-center">
           <div className="inline-flex space-x-1 text-blue-600">
             <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
             <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
             <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
           </div>
-          <p className="text-gray-600 mt-4">Memuat data absensi...</p>
+          <p className="text-gray-600 mt-4 text-lg">Memuat...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-blue-600 to-blue-700 shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between py-4">
-            <div className="flex items-center space-x-4">
-              <div>
-                <h1 className="text-2xl font-bold text-white">Laporan Absensi</h1>
-                <p className="text-sm text-blue-100">
-                  {userRole === 'admin'
-                    ? 'Lihat dan export laporan absensi semua karyawan'
-                    : 'Lihat dan export riwayat absensi Anda'}
-                </p>
+    <div className="min-h-screen bg-gray-100 flex">
+      <AdminSidebar user={currentUser} profile={profile} className="w-64 fixed h-screen hidden lg:block" />
+
+      <div className="flex-1 lg:ml-64 transition-all duration-300">
+        <div className="bg-white shadow-md border-b sticky top-0 z-10">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <h1 className="text-2xl font-bold text-gray-900 truncate">Manajemen Absensi</h1>
+                <p className="text-sm text-gray-600 mt-1">Lihat dan kelola absensi karyawan berdasarkan tanggal</p>
               </div>
-            </div>
-            <div className="flex items-center space-x-3">
-              <button
-                onClick={refreshData}
-                className="flex items-center space-x-2 px-3 py-1.5 bg-white/20 text-white rounded-lg hover:bg-white/30 transition-colors"
-                title="Refresh Data"
-              >
-                <RefreshCw className="h-4 w-4" />
-                <span className="hidden sm:inline">Refresh</span>
-              </button>
-              <button
-                onClick={exportToCsv}
-                disabled={filteredData.length === 0}
-                className="flex items-center space-x-2 px-4 py-2 bg-white text-blue-700 rounded-lg hover:bg-white/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                <Download className="h-4 w-4" />
-                <span>Export CSV</span>
-              </button>
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  onClick={() => {
+                    setContentLoading(true);
+                    fetchAttendanceByDate(selectedDate).finally(() => setContentLoading(false));
+                  }}
+                  className="flex items-center justify-center space-x-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors sm:w-auto w-12 h-12"
+                  title="Refresh Data"
+                >
+                  <RefreshCw className="h-5 w-5 sm:mr-2" />
+                  <span className="sm:inline hidden">Refresh</span>
+                </button>
+                <button
+                  onClick={exportToCsv}
+                  disabled={filteredAttendance.length === 0}
+                  className="flex items-center justify-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors sm:w-auto w-12 h-12"
+                  title="Export CSV"
+                >
+                  <Download className="h-5 w-5 sm:mr-2" />
+                  <span className="sm:inline hidden">Export CSV</span>
+                </button>
+                <button
+                  onClick={handleDeleteAll}
+                  disabled={filteredAttendance.length === 0}
+                  className="flex items-center justify-center space-x-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors sm:w-auto w-12 h-12"
+                  title="Hapus Semua Data"
+                >
+                  <Trash2 className="h-5 w-5 sm:mr-2" />
+                  <span className="sm:inline hidden">Hapus Semua</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
-      </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Filters */}
-        <div className="bg-white rounded-lg shadow-md mb-6">
-          <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200">
-            <div className="flex items-center space-x-2">
-              <Filter className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
-              <h2 className="text-base sm:text-lg font-medium text-gray-900">Filter Laporan</h2>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          {success && (
+            <div className="mb-6 p-4 bg-green-50 rounded-lg flex items-center space-x-3 animate-fade-in">
+              <CheckCircle className="h-5 w-5 text-green-500" />
+              <p className="text-green-700 flex-1">{success}</p>
+              <button 
+                onClick={() => setSuccess(null)}
+                className="text-green-500 hover:text-green-700"
+              >
+                <XCircle className="h-5 w-5" />
+              </button>
+            </div>
+          )}
+
+          {error && (
+            <div className="mb-6 p-4 bg-red-50 rounded-lg flex items-center space-x-3 animate-fade-in">
+              <AlertTriangle className="h-5 w-5 text-red-500" />
+              <p className="text-red-700 flex-1">{error}</p>
+              <button 
+                onClick={() => setError(null)}
+                className="text-red-500 hover:text-red-700"
+              >
+                <XCircle className="h-5 w-5" />
+              </button>
+            </div>
+          )}
+
+          <div className="bg-white rounded-xl shadow-md mb-6 p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div className="flex items-center space-x-3">
+                <Clock className="h-5 w-5 text-blue-600" />
+                <h2 className="text-lg font-semibold text-gray-900">Pilih Tanggal</h2>
+              </div>
+              <input
+                type="date"
+                value={selectedDate.toISOString().split('T')[0]}
+                onChange={handleDateChange}
+                className="w-full sm:w-48 px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+              />
             </div>
           </div>
-          <div className="p-4 sm:p-6">
-            {/* Mobile: Compact 2-column grid */}
-            <div className="grid grid-cols-2 gap-3 sm:hidden">
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Jenis</label>
-                <select
-                  name="type"
-                  value={filters.type}
-                  onChange={handleFilterChange}
-                  className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="">Semua</option>
-                  <option value="masuk">Masuk</option>
-                  <option value="keluar">Keluar</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Status</label>
-                <select
-                  name="status"
-                  value={filters.status}
-                  onChange={handleFilterChange}
-                  className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="">Semua</option>
-                  <option value="berhasil">Berhasil</option>
-                  <option value="wajah_tidak_valid">Wajah Invalid</option>
-                  <option value="lokasi_tidak_valid">Lokasi Invalid</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Dari</label>
-                <input
-                  type="date"
-                  name="startDate"
-                  value={filters.startDate}
-                  onChange={handleFilterChange}
-                  className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Sampai</label>
-                <input
-                  type="date"
-                  name="endDate"
-                  value={filters.endDate}
-                  onChange={handleFilterChange}
-                  className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-transparent"
-                />
+
+          <div className="bg-white rounded-xl shadow-md overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200 bg-blue-50">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3 min-w-0 flex-1">
+                  <Clock className="h-5 w-5 text-blue-600" />
+                  <h2 className="text-lg font-semibold text-gray-900 truncate">
+                    Absensi: {formatDate(selectedDate)}
+                  </h2>
+                </div>
+                <div className="text-sm text-gray-600">{filteredAttendance.length} data</div>
               </div>
             </div>
 
-            {/* Desktop: Show all filters */}
-            <div className="hidden sm:grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {userRole === 'admin' && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Karyawan</label>
-                  <div className="relative">
-                    <Users className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-                    <select
-                      value={selectedEmployee}
-                      onChange={handleEmployeeChange}
-                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    >
-                      <option value="all">Semua Karyawan</option>
-                      {employees.map((employee) => (
-                        <option key={employee.id} value={employee.id}>
-                          {employee.name} {employee.employee_id ? `(${employee.employee_id})` : ''}
-                        </option>
-                      ))}
-                    </select>
+            <div className="p-6 border-b border-gray-200">
+              <div className="space-y-4">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Cari nama, email, ID..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition-all"
+                  />
+                </div>
+
+                <button
+                  onClick={() => setShowFilters(!showFilters)}
+                  className="flex items-center justify-between w-full px-4 py-3 text-sm text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                >
+                  <div className="flex items-center space-x-2">
+                    <Filter className="h-5 w-5" />
+                    <span>Filter Data</span>
                   </div>
-                </div>
-              )}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Tanggal Mulai</label>
-                <input
-                  type="date"
-                  name="startDate"
-                  value={filters.startDate}
-                  onChange={handleFilterChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Tanggal Akhir</label>
-                <input
-                  type="date"
-                  name="endDate"
-                  value={filters.endDate}
-                  onChange={handleFilterChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Jenis Absensi</label>
-                <select
-                  name="type"
-                  value={filters.type}
-                  onChange={handleFilterChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="">Semua Jenis</option>
-                  <option value="masuk">Masuk</option>
-                  <option value="keluar">Keluar</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
-                <select
-                  name="status"
-                  value={filters.status}
-                  onChange={handleFilterChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="">Semua Status</option>
-                  <option value="berhasil">Berhasil</option>
-                  <option value="wajah_tidak_valid">Wajah Invalid</option>
-                  <option value="lokasi_tidak_valid">Lokasi Invalid</option>
-                </select>
-              </div>
-            </div>
+                  {showFilters ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+                </button>
 
-            <div className="mt-3 sm:mt-4 flex justify-between items-center">
-              <div className="text-xs sm:text-sm text-gray-500">
-                Menampilkan {filteredData.length} dari {attendanceData.length} data
-              </div>
-              <button
-                onClick={clearFilters}
-                className="px-3 py-1.5 text-xs sm:text-sm text-gray-600 hover:bg-gray-50 rounded-lg transition-colors"
-              >
-                Reset Filter
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Data Table */}
-        <div className="bg-white rounded-lg shadow-md overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <Calendar className="h-5 w-5 text-blue-600" />
-                <h2 className="text-lg font-medium text-gray-900">
-                  Data Absensi ({filteredData.length})
-                </h2>
-              </div>
-              {userRole === 'admin' && (
-                <div className="text-sm text-gray-500">
-                  {selectedEmployee === 'all' ? 'Menampilkan semua karyawan' : `Menampilkan ${employees.find(e => e.id === selectedEmployee)?.name || 'karyawan'}`}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {filteredData.length > 0 ? (
-            <>
-              {/* Mobile: Card Layout */}
-              <div className="sm:hidden space-y-3 p-4">
-                {filteredData.map((record) => {
-                  const dateTime = formatDateTime(record.timestamp);
-                  return (
-                    <div key={record.id} className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center space-x-2">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                            record.type === 'masuk' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'
-                          }`}>
-                            {record.type === 'masuk' ? 'Masuk' : 'Keluar'}
-                          </span>
-                          <div className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(record.status)}`}>
-                            {getStatusIcon(record.status)}
-                            <span>{getStatusText(record.status)}</span>
-                          </div>
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          {dateTime.time}
-                        </div>
-                      </div>
-                      <div className="text-sm font-medium text-gray-900 mb-1">
-                        {dateTime.date}
-                      </div>
-                      {userRole === 'admin' && (
-                        <div className="text-xs text-gray-600 mb-1">
-                          {record.profiles?.name || 'Unknown'} • {record.profiles?.department || '-'}
-                        </div>
-                      )}
-                      <div className="flex items-center justify-between text-xs text-gray-500">
-                        <span>
-                          {record.is_late ? (
-                            <span className="text-red-600">Terlambat {record.late_minutes} menit</span>
-                          ) : (
-                            <span className="text-green-600">Tepat Waktu</span>
-                          )}
-                        </span>
-                        <span>
-                          {record.work_hours && record.work_hours > 0 ? `${record.work_hours} jam` : '-'}
-                        </span>
-                      </div>
+                {showFilters && (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Departemen</label>
+                      <select
+                        value={filterDepartment}
+                        onChange={(e) => setFilterDepartment(e.target.value)}
+                        className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                      >
+                        <option value="">Semua Departemen</option>
+                        {getDepartments().map(dept => (
+                          <option key={dept} value={dept}>{dept}</option>
+                        ))}
+                      </select>
                     </div>
-                  );
-                })}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                      <select
+                        value={filterStatus}
+                        onChange={(e) => setFilterStatus(e.target.value)}
+                        className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                      >
+                        <option value="">Semua Status</option>
+                        <option value="berhasil">Berhasil</option>
+                        <option value="wajah_tidak_valid">Wajah Invalid</option>
+                        <option value="lokasi_tidak_valid">Lokasi Invalid</option>
+                        <option value="tidak_hadir">Tidak Hadir</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Jenis</label>
+                      <select
+                        value={filterType}
+                        onChange={(e) => setFilterType(e.target.value)}
+                        className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                      >
+                        <option value="">Semua Jenis</option>
+                        <option value="masuk">Masuk</option>
+                        <option value="keluar">Keluar</option>
+                        <option value="absent">Tidak Hadir</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
               </div>
+            </div>
 
-              {/* Desktop: Table Layout */}
-              <div className="hidden sm:block overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Tanggal & Waktu
-                      </th>
-                      {userRole === 'admin' && (
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+            {contentLoading ? (
+              <div className="flex items-center justify-center py-16">
+                <div className="inline-flex space-x-1 text-blue-600">
+                  <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                  <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                  <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                </div>
+              </div>
+            ) : paginatedAttendance.length > 0 ? (
+              <>
+                <div className="hidden lg:block">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Karyawan
                         </th>
-                      )}
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Jenis
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Status
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Keterlambatan
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Jam Kerja
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Lokasi
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {filteredData.map((record) => {
-                      const dateTime = formatDateTime(record.timestamp);
-                      return (
-                        <tr
-                          key={record.id}
-                          className="hover:bg-blue-50 cursor-pointer transition"
-                          onClick={() => setSelectedRecord(record)}
-                        >
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div>
-                              <div className="text-sm font-medium text-gray-900">
-                                {dateTime.date}
+                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Waktu
+                        </th>
+                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Jenis
+                        </th>
+                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Status
+                        </th>
+                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Keterlambatan
+                        </th>
+                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Lokasi
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {paginatedAttendance.map((record) => (
+                        <tr key={record.id} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-6 py-4">
+                            <div className="flex items-center">
+                              <div className="flex-shrink-0 h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
+                                <span className="text-blue-600 font-medium text-base">
+                                  {record.profiles?.name?.charAt(0).toUpperCase() || '?'}
+                                </span>
                               </div>
-                              <div className="text-sm text-gray-500">
-                                {dateTime.time}
+                              <div className="ml-4 min-w-0 flex-1">
+                                <div className="text-sm font-medium text-gray-900 truncate">
+                                  {record.profiles?.name || 'Unknown'}
+                                </div>
+                                <div className="text-xs text-gray-500 truncate">
+                                  {record.profiles?.employee_id || '-'}
+                                </div>
                               </div>
                             </div>
                           </td>
-                          {userRole === 'admin' && (
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div>
-                                <div className="text-sm font-medium text-gray-900">
-                                  {record.profiles?.name || 'Unknown'}
-                                </div>
-                                <div className="text-sm text-gray-500">
-                                  {record.profiles?.department || '-'}
-                                </div>
-                              </div>
-                            </td>
-                          )}
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 capitalize">
-                              {record.type === 'masuk' ? 'Masuk' : 'Keluar'}
+                            <div className="text-sm text-gray-900">
+                              {formatTime(record.timestamp)}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {formatDate(new Date(record.timestamp))}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 capitalize">
+                              {record.type === 'masuk' ? 'Masuk' : record.type === 'keluar' ? 'Keluar' : 'Tidak Hadir'}
                             </span>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <div className={`inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(record.status)}`}>
+                            <div className={`inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(record.status)}`}>
                               {getStatusIcon(record.status)}
                               <span>{getStatusText(record.status)}</span>
                             </div>
@@ -731,7 +740,7 @@ const AttendanceHistory: React.FC = () => {
                           <td className="px-6 py-4 whitespace-nowrap">
                             {record.is_late ? (
                               <div className="text-sm text-red-600">
-                                <span className="font-medium">{record.late_minutes} menit</span>
+                                <span className="font-medium">Terlambat {record.late_minutes} menit</span>
                               </div>
                             ) : (
                               <div className="text-sm text-green-600">
@@ -740,94 +749,250 @@ const AttendanceHistory: React.FC = () => {
                             )}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm text-gray-900">
-                              {record.work_hours && record.work_hours > 0 ? (
-                                <span>{record.work_hours} jam</span>
-                              ) : (
-                                <span>-</span>
-                              )}
-                            </div>
-                            {record.overtime_hours && record.overtime_hours > 0 && (
-                              <div className="text-xs text-blue-600">
-                                Lembur: {record.overtime_hours} jam
-                              </div>
-                            )}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {record.latitude && record.longitude ? (
+                            {record.latitude !== null && record.longitude !== null ? (
                               <div className="flex items-center">
-                                <MapPin className="h-4 w-4 mr-1 text-gray-400" />
-                                <span>
+                                <MapPin className="h-5 w-5 mr-1 text-gray-400" />
+                                <span className="text-xs">
                                   {record.latitude.toFixed(4)}, {record.longitude.toFixed(4)}
                                 </span>
                               </div>
                             ) : (
-                              <span className="text-gray-400">Tidak ada lokasi</span>
+                              <span className="text-gray-400 text-xs">Tidak ada lokasi</span>
                             )}
                           </td>
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="lg:hidden p-6 space-y-6">
+                  {paginatedAttendance.map((record) => (
+                    <div
+                      key={record.id}
+                      className="bg-white rounded-xl shadow-md p-6 border border-gray-100 transition-transform hover:scale-[1.01]"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center space-x-4 flex-1">
+                          <div className="flex-shrink-0 h-12 w-12 bg-blue-100 rounded-full flex items-center justify-center">
+                            <span className="text-blue-600 font-medium text-lg">
+                              {record.profiles?.name?.charAt(0).toUpperCase() || '?'}
+                            </span>
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-base font-semibold text-gray-900 truncate">
+                              {record.profiles?.name || 'Unknown'}
+                            </p>
+                            <p className="text-sm text-gray-600 truncate">
+                              {record.profiles?.employee_id || '-'} • {record.profiles?.department || '-'}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <p className="text-sm font-medium text-gray-800 whitespace-nowrap">
+                            {formatTime(record.timestamp)}
+                          </p>
+                          <p className="text-xs text-gray-500 whitespace-nowrap">
+                            {formatDate(new Date(record.timestamp))}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-sm font-medium ${getStatusColor(record.status)}`}>
+                          {getStatusIcon(record.status)}
+                          <span className="ml-1">{getStatusText(record.status)}</span>
+                        </span>
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800 capitalize">
+                          {record.type === 'masuk' ? 'Masuk' : record.type === 'keluar' ? 'Keluar' : 'Tidak Hadir'}
+                        </span>
+                      </div>
+                      <div className="mt-3 flex justify-between items-center">
+                        <div>
+                          {record.is_late ? (
+                            <p className="text-sm text-red-600">
+                              Terlambat {record.late_minutes} menit
+                            </p>
+                          ) : (
+                            <p className="text-sm text-green-600">
+                              Tepat Waktu
+                            </p>
+                          )}
+                        </div>
+                        {record.latitude !== null && record.longitude !== null && (
+                          <div className="flex items-center text-sm text-gray-500">
+                            <MapPin className="h-4 w-4 mr-1" />
+                            <span>{record.latitude.toFixed(2)}, {record.longitude.toFixed(2)}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {totalPages > 1 && (
+                  <div className="flex justify-between items-center px-6 py-4 border-t border-gray-200">
+                    <button
+                      onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                      disabled={currentPage === 1}
+                      className="flex items-center space-x-2 px-4 py-2 text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <ChevronLeft className="h-5 w-5" />
+                      <span className="hidden sm:inline">Sebelumnya</span>
+                    </button>
+                    <span className="text-sm text-gray-600">
+                      Halaman {currentPage} dari {totalPages}
+                    </span>
+                    <button
+                      onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                      disabled={currentPage === totalPages}
+                      className="flex items-center space-x-2 px-4 py-2 text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <span className="hidden sm:inline">Berikutnya</span>
+                      <ChevronRight className="h-5 w-5" />
+                    </button>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="text-center py-16">
+                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <FileText className="h-8 w-8 text-gray-400" />
+                </div>
+                <p className="text-gray-600 text-lg font-medium mb-2">Tidak ada data absensi</p>
+                <p className="text-gray-500">Pilih tanggal lain atau refresh data</p>
               </div>
-            </>
-          ) : (
-            <div className="text-center py-12">
-              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Calendar className="h-8 w-8 text-gray-400" />
-              </div>
-              <p className="text-gray-500 text-lg mb-2">Tidak ada data absensi ditemukan</p>
-              <p className="text-gray-400">Coba sesuaikan filter atau periksa kembali nanti</p>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Modal Detail Absensi */}
-      {selectedRecord && (
-        <div className="fixed inset-0 z-50 bg-black bg-opacity-40 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-lg max-w-md w-full p-6 relative animate-fade-in">
-            <button
-              onClick={() => setSelectedRecord(null)}
-              className="absolute top-3 right-3 text-gray-400 hover:text-gray-600"
-              title="Tutup"
-            >
-              <XCircle className="h-6 w-6" />
-            </button>
-            <h3 className="text-xl font-bold text-gray-900 mb-2">Detail Absensi</h3>
-            <div className="mb-4 text-sm text-gray-500">
-              {formatDateTime(selectedRecord.timestamp).date} • {formatDateTime(selectedRecord.timestamp).time}
-            </div>
-            <div className="space-y-2">
-              {userRole === 'admin' && (
-                <div>
-                  <span className="font-medium text-gray-700">Karyawan:</span> {selectedRecord.profiles?.name || 'Unknown'}
+      {showWorkHoursSettings && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
+          <div className="w-full max-w-lg bg-white rounded-2xl shadow-xl max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-semibold text-gray-900">Pengaturan Jam Kerja</h2>
+                <button
+                  onClick={() => setShowWorkHoursSettings(false)}
+                  className="text-gray-500 hover:text-gray-700 p-2 rounded-full hover:bg-gray-100"
+                  aria-label="Close"
+                >
+                  <X className="h-6 w-6" />
+                </button>
+              </div>
+
+              <div className="space-y-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Jam Masuk
+                    </label>
+                    <input
+                      type="time"
+                      name="startTime"
+                      value={workHoursSettings.startTime}
+                      onChange={handleWorkHoursChange}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Jam Keluar
+                    </label>
+                    <input
+                      type="time"
+                      name="endTime"
+                      value={workHoursSettings.endTime}
+                      onChange={handleWorkHoursChange}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                    />
+                  </div>
                 </div>
-              )}
-              <div>
-                <span className="font-medium text-gray-700">Jenis:</span> {selectedRecord.type === 'masuk' ? 'Masuk' : 'Keluar'}
-              </div>
-              <div>
-                <span className="font-medium text-gray-700">Status:</span>
-                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ml-2 ${getStatusColor(selectedRecord.status)}`}>
-                  {getStatusIcon(selectedRecord.status)}
-                  <span className="ml-1">{getStatusText(selectedRecord.status)}</span>
-                </span>
-              </div>
-              <div>
-                <span className="font-medium text-gray-700">Keterlambatan:</span> {selectedRecord.is_late ? `${selectedRecord.late_minutes} menit` : 'Tepat Waktu'}
-              </div>
-              <div>
-                <span className="font-medium text-gray-700">Jam Kerja:</span> {selectedRecord.work_hours && selectedRecord.work_hours > 0 ? `${selectedRecord.work_hours} jam` : '-'}
-              </div>
-              {selectedRecord.overtime_hours && selectedRecord.overtime_hours > 0 && (
+
                 <div>
-                  <span className="font-medium text-gray-700">Lembur:</span> {selectedRecord.overtime_hours} jam
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Toleransi Keterlambatan (menit)
+                  </label>
+                  <input
+                    type="number"
+                    name="lateThreshold"
+                    value={workHoursSettings.lateThreshold}
+                    onChange={handleWorkHoursChange}
+                    min={0}
+                    max={60}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Karyawan dianggap terlambat jika masuk setelah jam masuk + toleransi
+                  </p>
                 </div>
-              )}
-              <div>
-                <span className="font-medium text-gray-700">Lokasi:</span> {selectedRecord.latitude && selectedRecord.longitude ? `${selectedRecord.latitude.toFixed(4)}, ${selectedRecord.longitude.toFixed(4)}` : 'Tidak ada lokasi'}
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Toleransi Pulang Cepat (menit)
+                  </label>
+                  <input
+                    type="number"
+                    name="earlyLeaveThreshold"
+                    value={workHoursSettings.earlyLeaveThreshold}
+                    onChange={handleWorkHoursChange}
+                    min={0}
+                    max={60}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Karyawan dianggap pulang cepat jika keluar sebelum jam keluar - toleransi
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Durasi Istirahat (menit)
+                  </label>
+                  <input
+                    type="number"
+                    name="breakDuration"
+                    value={workHoursSettings.breakDuration}
+                    onChange={handleWorkHoursChange}
+                    min={0}
+                    max={120}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  />
+                </div>
+
+                <div className="bg-blue-50 p-5 rounded-lg">
+                  <div className="flex items-center space-x-2 mb-3">
+                    <Bell className="h-5 w-5 text-blue-600" />
+                    <h3 className="font-medium text-blue-900">Pengaturan Absensi Otomatis</h3>
+                  </div>
+                  <p className="text-sm text-blue-700">
+                    Sistem akan otomatis menandai karyawan sebagai "Tidak Hadir" jika:
+                  </p>
+                  <ul className="text-sm text-blue-700 mt-2 space-y-1 pl-5 list-disc">
+                    <li>Sudah melewati jam keluar kerja + 30 menit</li>
+                    <li>Tidak ada catatan absensi masuk pada hari tersebut</li>
+                    <li>Karyawan berstatus aktif (bukan admin)</li>
+                    <li>Belum ada catatan absensi untuk hari tersebut</li>
+                  </ul>
+                </div>
+
+                <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-4 pt-4">
+                  <button
+                    onClick={() => setShowWorkHoursSettings(false)}
+                    className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    onClick={saveWorkHoursSettings}
+                    className="flex-1 bg-blue-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-blue-700 transition-colors text-sm"
+                  >
+                    <div className="flex items-center justify-center space-x-2">
+                      <Save className="h-5 w-5" />
+                      <span>Simpan</span>
+                    </div>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -837,4 +1002,4 @@ const AttendanceHistory: React.FC = () => {
   );
 };
 
-export default AttendanceHistory;
+export default AttendanceManagementByDate;
