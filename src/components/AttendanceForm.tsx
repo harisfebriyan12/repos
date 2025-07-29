@@ -16,7 +16,7 @@ import {
   supabase,
   getOfficeLocation,
   getCameraVerificationSettings,
-} from '../utils/supabaseClient';
+} from '../utils/supabaseClient.ts';
 import {
   processImageUrl,
   compareFaceFingerprints,

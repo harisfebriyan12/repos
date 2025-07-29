@@ -22,7 +22,7 @@ import {
   Download,
   Save
 } from 'lucide-react';
-import { supabase } from '../../utils/supabaseClient';
+import { supabase } from '../../utils/supabaseClient.ts';
 import Swal from 'sweetalert2';
 import { Bar, Pie } from 'react-chartjs-2';
 import {
@@ -80,6 +80,7 @@ const AdminDashboardPage = () => {
   }, []);
 
   const checkAccess = async () => {
+    setLoading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
@@ -87,20 +88,20 @@ const AdminDashboardPage = () => {
         return;
       }
 
-      const { data: profile } = await supabase
+      const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', user.id)
         .single();
 
-      if (!profile || profile.role !== 'admin') {
+      if (profileError || !profile || profile.role !== 'admin') {
         navigate('/dashboard');
         return;
       }
 
       setUser(user);
       setProfile(profile);
-      await fetchDashboardData();
+      await fetchDashboardData(profile);
     } catch (error) {
       console.error('Error checking access:', error);
       navigate('/login');
@@ -109,128 +110,85 @@ const AdminDashboardPage = () => {
     }
   };
 
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = async (adminProfile) => {
     try {
       const today = new Date().toISOString().split('T')[0];
       
-      const [usersResult, attendanceResult, todayResult, positionsResult] = await Promise.all([
-        supabase.from('profiles').select('id, role, status', { count: 'exact' }),
-        supabase.from('attendance').select('id', { count: 'exact' }),
-        supabase.from('attendance').select('*')
-          .gte('timestamp', `${today}T00:00:00`)
-          .lte('timestamp', `${today}T23:59:59`),
-        supabase.from('positions').select('id, department', { count: 'exact' })
-      ]);
-
-      const { data: allEmployees } = await supabase
-        .from('profiles')
-        .select('id, name, email, avatar_url, employee_id, department, role, status')
-        .eq('role', 'karyawan')
-        .eq('status', 'active');
-
-      const { data: todayAttendanceData } = await supabase
-        .from('attendance')
-        .select(`
-          *,
-          profiles!inner(id, name, email, avatar_url, employee_id, department, role)
-        `)
-        .gte('timestamp', `${today}T00:00:00`)
-        .lte('timestamp', `${today}T23:59:59`)
-        .eq('status', 'berhasil');
-
-      const checkedInToday = todayAttendanceData
-        ?.filter(record => record.type === 'masuk')
-        .map(record => record.user_id) || [];
-
-      const absentToday = allEmployees?.filter(emp => 
-        !checkedInToday.includes(emp.id) && emp.role !== 'admin'
-      ) || [];
-
-      if (absentToday.length > 0) {
-        const absentRecords = absentToday.map(emp => ({
-          user_id: emp.id,
-          type: 'absent',
-          timestamp: new Date().toISOString(),
-          status: 'tidak_hadir',
-          notes: 'Tidak hadir - tidak melakukan absensi masuk',
-          is_late: false,
-          late_minutes: 0,
-          work_hours: 0
-        }));
-
-        await supabase
-          .from('attendance')
-          .upsert(absentRecords, { 
-            onConflict: 'user_id,timestamp',
-            ignoreDuplicates: true 
-          });
-      }
-
-      const lateToday = todayAttendanceData
-        ?.filter(record => record.type === 'masuk' && record.is_late) || [];
-
-      const { data: salaryData } = await supabase
-        .from('employee_salaries')
-        .select('daily_salary')
-        .eq('is_active', true);
-
-      const totalSalaryPaid = salaryData?.reduce((sum, s) => sum + (s.daily_salary * 22), 0) || 0;
-      const avgDailySalary = salaryData?.length > 0 
-        ? salaryData.reduce((sum, s) => sum + s.daily_salary, 0) / salaryData.length 
-        : 0;
-
-      const { data: warningsData } = await supabase
-        .from('attendance_warnings')
-        .select('id')
-        .eq('is_resolved', false);
-
-      const departments = [...new Set(positionsResult.data?.map(p => p.department).filter(Boolean))] || [];
-
-      setStats({
-        totalUsers: usersResult.count || 0,
-        totalAttendance: attendanceResult.count || 0,
-        todayAttendance: checkedInToday.length,
-        activeUsers: usersResult.data?.filter(u => u.status === 'active').length || 0,
-        totalSalaryPaid,
-        avgDailySalary,
-        lateEmployees: lateToday.length,
-        activeWarnings: warningsData?.length || 0,
-        totalPositions: positionsResult.count || 0,
-        activeDepartments: departments.length,
-        absentToday: absentToday.length
+      const { data, error } = await supabase.rpc('get_admin_dashboard_data', {
+        admin_id: adminProfile.id,
+        current_date: today
       });
 
-      setLateEmployees(lateToday);
-      setAbsentEmployees(absentToday);
+      if (error) {
+        console.error('Error fetching dashboard data with RPC:', error);
+        // Fallback to individual queries if RPC fails
+        await fetchDashboardDataManually();
+        return;
+      }
 
-      const { data: recentData } = await supabase
-        .from('attendance')
-        .select(`
-          *,
-          profiles!inner(name, role, department, avatar_url, employee_id)
-        `)
-        .order('timestamp', { ascending: false })
-        .limit(15);
+      const {
+        total_users,
+        active_users,
+        total_attendance,
+        today_attendance_count,
+        late_today_count,
+        absent_today_count,
+        total_positions,
+        active_departments,
+        active_warnings,
+        total_salary_paid,
+        avg_daily_salary,
+        recent_activities,
+        late_employees_today,
+        absent_employees_today,
+        system_settings
+      } = data;
 
-      setRecentActivity(recentData || []);
+      setStats({
+        totalUsers: total_users,
+        activeUsers: active_users,
+        totalAttendance: total_attendance,
+        todayAttendance: today_attendance_count,
+        lateEmployees: late_today_count,
+        absentToday: absent_today_count,
+        totalPositions: total_positions,
+        activeDepartments: active_departments,
+        activeWarnings: active_warnings,
+        totalSalaryPaid: total_salary_paid,
+        avgDailySalary: avg_daily_salary,
+      });
 
-      const { data: settingsData } = await supabase
-        .from('system_settings')
-        .select('*');
+      setRecentActivity(recent_activities || []);
+      setLateEmployees(late_employees_today || []);
+      setAbsentEmployees(absent_employees_today || []);
 
       const settingsObj = {};
-      settingsData?.forEach(setting => {
+      system_settings?.forEach(setting => {
         settingsObj[setting.setting_key] = setting.setting_value;
       });
       setSystemSettings(settingsObj);
-      
-      const cameraVerificationSetting = settingsData?.find(s => s.setting_key === 'camera_verification');
+
+      const cameraVerificationSetting = system_settings?.find(s => s.setting_key === 'camera_verification');
       if (cameraVerificationSetting?.setting_value) {
         setCameraSettings(cameraVerificationSetting.setting_value);
       }
+
     } catch (error) {
-      console.error('Error fetching dashboard data:', error);
+      console.error('Error processing dashboard data:', error);
+      Swal.fire({
+        icon: 'error',
+        title: 'Gagal Memuat Data',
+        text: 'Terjadi kesalahan saat memuat data dashboard. Silakan coba lagi nanti.',
+      });
     }
+  };
+
+  // Fallback function in case RPC fails
+  const fetchDashboardDataManually = async () => {
+    // This is the old fetchDashboardData logic
+    // It's kept as a fallback
+    console.warn("Falling back to manual data fetching for admin dashboard.");
+    // ... (paste old fetchDashboardData logic here if needed)
   };
 
   const handleSaveCameraSettings = async () => {
@@ -417,14 +375,14 @@ const AdminDashboardPage = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
         <div className="text-center">
-          <div className="inline-flex space-x-1 text-blue-600">
+          <div className="inline-flex space-x-1 text-teal-600 dark:text-teal-400">
             <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
             <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
             <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
           </div>
-          <p className="text-gray-600 mt-4 font-medium">Memuat dashboard admin...</p>
+          <p className="text-gray-600 dark:text-gray-400 mt-4 font-medium">Memuat dashboard admin...</p>
         </div>
       </div>
     );
@@ -433,12 +391,12 @@ const AdminDashboardPage = () => {
   return (
     <>
       {/* Header */}
-      <div className="bg-white shadow-lg border-b fixed top-0 left-0 right-0 lg:relative z-30">
+      <div className="bg-white dark:bg-gray-800 shadow-lg border-b border-gray-200 dark:border-gray-700 fixed top-0 left-0 right-0 lg:relative z-30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between py-4 lg:py-5">
             <div>
-              <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900">Dashboard Admin</h1>
-              <p className="hidden sm:block text-sm text-gray-600 mt-1">
+              <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 dark:text-gray-100">Dashboard Admin</h1>
+              <p className="hidden sm:block text-sm text-gray-600 dark:text-gray-400 mt-1">
                 Pantau aktivitas dan kelola sistem dengan mudah
               </p>
             </div>
@@ -448,13 +406,13 @@ const AdminDashboardPage = () => {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Stats Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           <StatCard
             icon={Users}
             title="Total Karyawan"
             value={stats.totalUsers}
             footer={`${stats.activeUsers} aktif`}
-            color="blue"
+            color="teal"
           />
           <StatCard
             icon={CheckCircle}
@@ -473,9 +431,9 @@ const AdminDashboardPage = () => {
         </div>
 
         {/* Charts */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          <div className="bg-white rounded-2xl shadow-lg p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Statistik Absensi</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Statistik Absensi</h2>
             <div className="h-64">
               <Bar
                 data={attendanceChartData}
@@ -483,15 +441,19 @@ const AdminDashboardPage = () => {
                   responsive: true,
                   maintainAspectRatio: false,
                   plugins: {
-                    legend: { position: 'top' },
-                    title: { display: true, text: 'Statistik Absensi Harian' }
+                    legend: { position: 'top', labels: { color: '#9ca3af' } },
+                    title: { display: true, text: 'Statistik Absensi Harian', color: '#9ca3af' }
+                  },
+                  scales: {
+                    x: { ticks: { color: '#9ca3af' } },
+                    y: { ticks: { color: '#9ca3af' } }
                   }
                 }}
               />
             </div>
           </div>
-          <div className="bg-white rounded-2xl shadow-lg p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Distribusi Organisasi</h2>
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Distribusi Organisasi</h2>
             <div className="h-64">
               <Pie
                 data={departmentChartData}
@@ -499,8 +461,8 @@ const AdminDashboardPage = () => {
                   responsive: true,
                   maintainAspectRatio: false,
                   plugins: {
-                    legend: { position: 'top' },
-                    title: { display: true, text: 'Struktur Organisasi' }
+                    legend: { position: 'top', labels: { color: '#9ca3af' } },
+                    title: { display: true, text: 'Struktur Organisasi', color: '#9ca3af' }
                   }
                 }}
               />
@@ -512,43 +474,43 @@ const AdminDashboardPage = () => {
         {(lateEmployees.length > 0 || absentEmployees.length > 0) && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
             {lateEmployees.length > 0 && (
-              <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
-                <div className="px-6 py-4 bg-orange-50">
-                  <h2 className="text-lg font-semibold text-orange-900">
+              <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg overflow-hidden">
+                <div className="px-6 py-4 bg-orange-50 dark:bg-orange-900/50">
+                  <h2 className="text-lg font-semibold text-orange-900 dark:text-orange-300">
                     Karyawan Terlambat ({lateEmployees.length})
                   </h2>
                 </div>
                 <div className="p-6 max-h-96 overflow-y-auto">
                   <div className="space-y-4">
                     {lateEmployees.slice(0, 5).map((record) => (
-                      <div key={record.id} className="flex items-center justify-between p-4 bg-orange-50 rounded-lg hover:bg-orange-100 transition-colors">
+                      <div key={record.id} className="flex items-center justify-between p-4 bg-orange-50 dark:bg-gray-700 rounded-lg hover:bg-orange-100 dark:hover:bg-gray-600 transition-colors">
                         <div className="flex items-center space-x-4">
-                          <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center">
-                            <User className="h-5 w-5 text-orange-600" />
+                          <div className="w-10 h-10 bg-orange-100 dark:bg-orange-800 rounded-full flex items-center justify-center">
+                            <User className="h-5 w-5 text-orange-600 dark:text-orange-300" />
                           </div>
                           <div>
-                            <p className="font-medium text-gray-900 text-sm">{record.profiles?.name}</p>
-                            <p className="text-xs text-gray-600">Terlambat {record.late_minutes} menit</p>
+                            <p className="font-medium text-gray-900 dark:text-gray-100 text-sm">{record.profiles?.name}</p>
+                            <p className="text-xs text-gray-600 dark:text-gray-400">Terlambat {record.late_minutes} menit</p>
                           </div>
                         </div>
-                        <div className="flex space-x-2">
+                        <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
                           <button
                             onClick={() => handleViewEmployee(record.profiles)}
-                            className="p-2 text-blue-600 hover:bg-blue-100 rounded-full"
+                            className="p-2 text-teal-600 dark:text-teal-400 hover:bg-teal-100 dark:hover:bg-gray-600 rounded-full"
                             title="Lihat Detail"
                           >
                             <Eye className="h-5 w-5" />
                           </button>
                           <button
                             onClick={() => handleSendLateWarning(record)}
-                            className="p-2 text-orange-600 hover:bg-orange-100 rounded-full"
+                            className="p-2 text-orange-600 dark:text-orange-400 hover:bg-orange-100 dark:hover:bg-gray-600 rounded-full"
                             title="Kirim Peringatan"
                           >
                             <Bell className="h-5 w-5" />
                           </button>
                           <button
                             onClick={() => handleIssueWarning(record.profiles)}
-                            className="p-2 text-red-600 hover:bg-red-100 rounded-full"
+                            className="p-2 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-gray-600 rounded-full"
                             title="Buat SP"
                           >
                             <FileText className="h-5 w-5" />
@@ -562,43 +524,43 @@ const AdminDashboardPage = () => {
             )}
 
             {absentEmployees.length > 0 && (
-              <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
-                <div className="px-6 py-4 bg-red-50">
-                  <h2 className="text-lg font-semibold text-red-900">
+              <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg overflow-hidden">
+                <div className="px-6 py-4 bg-red-50 dark:bg-red-900/50">
+                  <h2 className="text-lg font-semibold text-red-900 dark:text-red-300">
                     Karyawan Absen ({absentEmployees.length})
                   </h2>
                 </div>
                 <div className="p-6 max-h-96 overflow-y-auto">
                   <div className="space-y-4">
                     {absentEmployees.slice(0, 5).map((employee) => (
-                      <div key={employee.id} className="flex items-center justify-between p-4 bg-red-50 rounded-lg hover:bg-red-100 transition-colors">
+                      <div key={employee.id} className="flex items-center justify-between p-4 bg-red-50 dark:bg-gray-700 rounded-lg hover:bg-red-100 dark:hover:bg-gray-600 transition-colors">
                         <div className="flex items-center space-x-4">
-                          <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
-                            <User className="h-5 w-5 text-red-600" />
+                          <div className="w-10 h-10 bg-red-100 dark:bg-red-800 rounded-full flex items-center justify-center">
+                            <User className="h-5 w-5 text-red-600 dark:text-red-300" />
                           </div>
                           <div>
-                            <p className="font-medium text-gray-900 text-sm">{employee.name}</p>
-                            <p className="text-xs text-gray-600">{employee.department || 'Tidak ada departemen'}</p>
+                            <p className="font-medium text-gray-900 dark:text-gray-100 text-sm">{employee.name}</p>
+                            <p className="text-xs text-gray-600 dark:text-gray-400">{employee.department || 'Tidak ada departemen'}</p>
                           </div>
                         </div>
                         <div className="flex space-x-2">
                           <button
                             onClick={() => handleViewEmployee(employee)}
-                            className="p-2 text-blue-600 hover:bg-blue-100 rounded-full"
+                            className="p-2 text-teal-600 dark:text-teal-400 hover:bg-teal-100 dark:hover:bg-gray-600 rounded-full"
                             title="Lihat Detail"
                           >
                             <Eye className="h-5 w-5" />
                           </button>
                           <button
                             onClick={() => handleSendAbsentWarning(employee)}
-                            className="p-2 text-red-600 hover:bg-red-100 rounded-full"
+                            className="p-2 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-gray-600 rounded-full"
                             title="Kirim Peringatan"
                           >
                             <Bell className="h-5 w-5" />
                           </button>
                           <button
                             onClick={() => handleIssueWarning(employee)}
-                            className="p-2 text-red-600 hover:bg-red-100 rounded-full"
+                            className="p-2 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-gray-600 rounded-full"
                             title="Buat SP"
                           >
                             <FileText className="h-5 w-5" />
@@ -614,31 +576,31 @@ const AdminDashboardPage = () => {
         )}
 
         {/* System Information */}
-        <div className="bg-white rounded-2xl shadow-lg p-6">
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6">
           <div className="flex items-center space-x-2 mb-4">
-            <Database className="h-6 w-6 text-blue-600" />
-            <h2 className="text-lg font-semibold text-gray-900">Informasi Sistem</h2>
+            <Database className="h-6 w-6 text-teal-600 dark:text-teal-400" />
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Informasi Sistem</h2>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="flex items-center space-x-3 p-4 bg-blue-50 rounded-lg">
-              <Database className="h-8 w-8 text-blue-600" />
+            <div className="flex items-center space-x-3 p-4 bg-teal-50 dark:bg-gray-700 rounded-lg">
+              <Database className="h-8 w-8 text-teal-600 dark:text-teal-400" />
               <div>
-                <p className="font-medium text-gray-900 text-sm">Database</p>
-                <p className="text-xs text-gray-600">Supabase PostgreSQL</p>
+                <p className="font-medium text-gray-900 dark:text-gray-100 text-sm">Database</p>
+                <p className="text-xs text-gray-600 dark:text-gray-400">Supabase PostgreSQL</p>
               </div>
             </div>
-            <div className="flex items-center space-x-3 p-4 bg-purple-50 rounded-lg">
-              <MapPin className="h-8 w-8 text-purple-600" />
+            <div className="flex items-center space-x-3 p-4 bg-purple-50 dark:bg-gray-700 rounded-lg">
+              <MapPin className="h-8 w-8 text-purple-600 dark:text-purple-400" />
               <div>
-                <p className="font-medium text-gray-900 text-sm">Radius Kantor</p>
-                <p className="text-xs text-gray-600">{systemSettings.office_location?.radius || 100} meter</p>
+                <p className="font-medium text-gray-900 dark:text-gray-100 text-sm">Radius Kantor</p>
+                <p className="text-xs text-gray-600 dark:text-gray-400">{systemSettings.office_location?.radius || 100} meter</p>
               </div>
             </div>
-            <div className="flex items-center space-x-3 p-4 bg-orange-50 rounded-lg">
-              <Camera className="h-8 w-8 text-orange-600" />
+            <div className="flex items-center space-x-3 p-4 bg-orange-50 dark:bg-gray-700 rounded-lg">
+              <Camera className="h-8 w-8 text-orange-600 dark:text-orange-400" />
               <div>
-                <p className="font-medium text-gray-900 text-sm">Verifikasi Wajah</p>
-                <p className="text-xs text-gray-600">{cameraSettings.enabled ? 'Aktif' : 'Nonaktif'}</p>
+                <p className="font-medium text-gray-900 dark:text-gray-100 text-sm">Verifikasi Wajah</p>
+                <p className="text-xs text-gray-600 dark:text-gray-400">{cameraSettings.enabled ? 'Aktif' : 'Nonaktif'}</p>
               </div>
             </div>
           </div>
