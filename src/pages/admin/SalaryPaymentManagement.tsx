@@ -17,9 +17,9 @@ import {
   FileText,
   Send
 } from 'lucide-react';
-import { supabase } from '../utils/supabaseClient';
-import SalaryPaymentForm from '../components/SalaryPaymentForm';
-import AdminSidebar from '../components/AdminSidebar';
+import { supabase } from '../../utils/supabaseClient';
+import SalaryPaymentForm from '../../components/SalaryPaymentForm';
+import AdminSidebar from '../../components/AdminSidebar';
 
 const SalaryPaymentManagement = () => {
   const navigate = useNavigate();

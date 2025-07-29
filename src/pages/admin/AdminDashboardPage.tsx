@@ -22,7 +22,7 @@ import {
   Download,
   Save
 } from 'lucide-react';
-import { supabase } from '../utils/supabaseClient';
+import { supabase } from '../../utils/supabaseClient';
 import Swal from 'sweetalert2';
 import { Bar, Pie } from 'react-chartjs-2';
 import {
@@ -35,10 +35,10 @@ import {
   Tooltip,
   Legend,
 } from 'chart.js';
-import WarningLetterGenerator from '../components/WarningLetterGenerator';
-import NotificationSystem from '../components/NotificationSystem';
-import StatCard from '../components/ui/StatCard';
-import { User as UserType, Profile } from '../types';
+import WarningLetterGenerator from '../../components/WarningLetterGenerator';
+import NotificationSystem from '../../components/NotificationSystem';
+import StatCard from '../../components/ui/StatCard';
+import { User as UserType, Profile } from '../../types';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, Title, Tooltip, Legend);
 

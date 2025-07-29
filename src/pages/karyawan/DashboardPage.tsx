@@ -8,13 +8,13 @@ import {
 } from 'lucide-react';
 import { format, isToday, isWeekend, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns';
 import { id } from 'date-fns/locale';
-import { supabase } from '../utils/supabaseClient';
-import AttendanceForm from '../components/AttendanceForm';
-import NotificationSystem from '../components/NotificationSystem';
+import { supabase } from '../../utils/supabaseClient';
+import AttendanceForm from '../../components/AttendanceForm';
+import NotificationSystem from '../../components/NotificationSystem';
 import AttendanceHistory from './AttendanceHistory';
-import ProfileEditor from '../features/karyawan/profile/ProfileEditor';
-import StatCard from '../components/ui/StatCard';
-import { User as UserType, Profile } from '../types';
+import ProfileEditor from '../../features/karyawan/profile/ProfileEditor';
+import StatCard from '../../components/ui/StatCard';
+import { User as UserType, Profile } from '../../types';
 
 // Calendar component (simplified version)
 const ReactCalendar = ({ onChange, value, tileContent, tileClassName, locale, className, prevLabel, nextLabel, navigationLabel }: {
