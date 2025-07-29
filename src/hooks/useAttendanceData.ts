@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '../utils/supabaseClient';
+import { supabase } from '../utils/supabaseClient.ts';
 import Swal from 'sweetalert2';
 import { Attendance, Profile, WorkHoursSettings } from '../types';
 

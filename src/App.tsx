@@ -1,6 +1,6 @@
 import React, { useEffect, useState, createContext, useContext } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { supabase } from './utils/supabaseClient';
+import { supabase } from './utils/supabaseClient.ts';
 import { Session, User } from '@supabase/supabase-js';
 
 // Layouts
