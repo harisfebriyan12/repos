@@ -21,11 +21,11 @@ import {
   ChevronLeft,
   ChevronRight
 } from 'lucide-react';
-import { supabase, uploadFile, getFileUrl } from '../utils/supabaseClient';
+import { supabase, uploadFile, getFileUrl } from '../../utils/supabaseClient';
 import Swal from 'sweetalert2';
-import ProfileModal from '../components/ProfileModal';
-import CustomFaceCapture from '../components/CustomFaceCapture';
-import AdminSidebar from '../components/AdminSidebar';
+import ProfileModal from '../../components/ProfileModal';
+import CustomFaceCapture from '../../components/CustomFaceCapture';
+import AdminSidebar from '../../components/AdminSidebar';
 
 // Type definitions
 interface Position {

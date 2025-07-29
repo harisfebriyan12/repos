@@ -17,8 +17,8 @@ import {
   ChevronRight
 } from 'lucide-react';
 import Swal from 'sweetalert2';
-import { supabase } from '../utils/supabaseClient';
-import AdminSidebar from '../components/AdminSidebar';
+import { supabase } from '../../utils/supabaseClient';
+import AdminSidebar from '../../components/AdminSidebar';
 
 // Type definitions
 interface Department {

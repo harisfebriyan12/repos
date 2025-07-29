@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, MapPin, Save, Edit, Navigation, X, Bell, AlertTriangle, Clock, Camera } from 'lucide-react';
-import { supabase } from '../utils/supabaseClient';
-import SimpleLocationPicker from '../components/SimpleLocationPicker';
-import AdminSidebar from '../components/AdminSidebar';
+import { supabase } from '../../utils/supabaseClient';
+import SimpleLocationPicker from '../../components/SimpleLocationPicker';
+import AdminSidebar from '../../components/AdminSidebar';
 import Swal from 'sweetalert2';
 
 const SystemSettings = () => {
