@@ -1,39 +1,37 @@
-import React, { useState, useEffect, lazy, Suspense, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Swal from 'sweetalert2';
-import { useNavigate, useLocation, Link } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { LogIn, Mail, Lock, AlertCircle, CheckCircle, Eye, EyeOff } from 'lucide-react';
-import { supabase, isSupabaseConfigured } from '../utils/supabaseClient.ts';
-import RecaptchaInfo from '../components/RecaptchaInfo';
+import { supabase, isSupabaseConfigured } from '../../utils/supabaseClient';
+import ReCAPTCHA from 'react-google-recaptcha';
 
-const ReCAPTCHA = lazy(() => import('react-google-recaptcha'));
-
-const Login = () => {
+const Login: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const recaptchaRef = useRef(null);
-  
+  const recaptchaRef = useRef<ReCAPTCHA>(null);
+
   const [formData, setFormData] = useState({
     email: '',
     password: ''
   });
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [successMessage, setSuccessMessage] = useState(null);
+  const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
-  const [captchaToken, setCaptchaToken] = useState(null);
-  const [isCaptchaLoaded, setIsCaptchaLoaded] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
 
   useEffect(() => {
-    if (location.state?.message) {
-      setSuccessMessage(location.state.message);
-      if (location.state?.email) {
-        setFormData(prev => ({ ...prev, email: location.state.email }));
+    const state = location.state as { message?: string; email?: string };
+    if (state?.message) {
+      setSuccessMessage(state.message);
+      if (state.email) {
+        setFormData(prev => ({ ...prev, email: state.email }));
       }
       window.history.replaceState({}, document.title);
     }
   }, [location.state]);
 
-  const handleChange = (e) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({
       ...formData,
       [e.target.name]: e.target.value
@@ -74,12 +72,10 @@ const Login = () => {
     setIsLoading(false);
     setError(null);
     setCaptchaToken(null);
-    if (recaptchaRef.current) {
-      recaptchaRef.current.reset();
-    }
+    recaptchaRef.current?.reset();
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     
     if (!validateForm()) return;
@@ -190,7 +186,7 @@ const Login = () => {
     }
   };
 
-  const handleCaptchaChange = (token) => {
+  const handleCaptchaChange = (token: string | null) => {
     setCaptchaToken(token);
     setError(null);
   };
@@ -300,27 +296,18 @@ const Login = () => {
               </div>
             </div>
 
-        
-
             {/* ReCAPTCHA */}
             <div className="flex justify-center">
-              <Suspense fallback={
-                <div className="h-20 w-full flex items-center justify-center bg-gray-50 rounded-lg">
-                  <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-blue-500"></div>
-                </div>
-              }>
-                <ReCAPTCHA
-                  ref={recaptchaRef}
-                  sitekey={import.meta.env.VITE_RECAPTCHA_SITE_KEY || "6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI"}
-                  onChange={handleCaptchaChange}
-                  onExpired={handleCaptchaExpired}
-                  onErrored={handleCaptchaError}
-                  theme="light"
-                  size="normal"
-                  className="mx-auto transform transition-all duration-300"
-                  onLoad={() => setIsCaptchaLoaded(true)}
-                />
-              </Suspense>
+              <ReCAPTCHA
+                ref={recaptchaRef}
+                sitekey={import.meta.env.VITE_RECAPTCHA_SITE_KEY || "6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI"}
+                onChange={handleCaptchaChange}
+                onExpired={handleCaptchaExpired}
+                onErrored={handleCaptchaError}
+                theme="light"
+                size="normal"
+                className="mx-auto transform transition-all duration-300"
+              />
             </div>
 
             {/* Login Button */}
@@ -340,16 +327,11 @@ const Login = () => {
                   Memproses...
                 </span>
               ) : (
-                <span className="flex items-center justify-center">
-                
-                  Masuk
-                </span>
+                'Masuk'
               )}
             </button>
           </form>
         </div>
-
-        
       </div>
 
       {/* Custom CSS for Animations and Gradient Background */}
