@@ -269,42 +269,42 @@ const UserManagement: React.FC = () => {
     setFaceFingerprint(fingerprint);
   };
 
+  const validateForm = () => {
+    const { name, email, password, position_id, role } = formData;
+    if (!name || !email || !position_id) {
+      Swal.fire({ icon: 'error', title: 'Gagal', text: 'Nama, email, dan jabatan harus diisi.' });
+      return false;
+    }
+    if (modalMode === 'add' && password.length < 8) {
+      Swal.fire({ icon: 'error', title: 'Gagal', text: 'Password minimal 8 karakter.' });
+      return false;
+    }
+    if (role !== 'admin' && !facePhoto) {
+      Swal.fire({ icon: 'error', title: 'Gagal', text: 'Foto wajah diperlukan untuk karyawan.' });
+      return false;
+    }
+    if (role !== 'admin' && !faceFingerprint) {
+      Swal.fire({ icon: 'error', title: 'Gagal', text: 'Sidik jari wajah tidak terdeteksi.' });
+      return false;
+    }
+    return true;
+  };
+
   const handleCreateUser = async () => {
-    if (!formData.name || !formData.email || !formData.position_id) {
-      Swal.fire({ icon: 'error', title: 'Gagal', text: 'Semua kolom wajib diisi' });
-      return;
-    }
-    if (modalMode === 'add' && formData.password.length < 8) {
-      Swal.fire({ icon: 'error', title: 'Gagal', text: 'Password minimal 8 karakter' });
-      return;
-    }
-    if (formData.role !== 'admin' && !facePhoto) {
-      Swal.fire({ icon: 'error', title: 'Gagal', text: 'Foto wajah diperlukan untuk karyawan' });
-      return;
-    }
-    if (formData.role !== 'admin' && !faceFingerprint) {
-      Swal.fire({ icon: 'error', title: 'Gagal', text: 'Fingerprint wajah tidak terdeteksi' });
-      return;
-    }
+    if (!validateForm()) return;
+
     setIsSubmitting(true);
     try {
-      let userId: string;
+      let userId = formData.id;
       if (modalMode === 'add') {
         const { data: authData, error: authError } = await supabase.auth.signUp({
           email: formData.email,
           password: formData.password,
-          options: {
-            data: {
-              name: formData.name,
-              role: formData.role
-            }
-          }
+          options: { data: { name: formData.name, role: formData.role } }
         });
         if (authError) throw authError;
-        if (!authData.user) throw new Error('Pendaftaran gagal');
+        if (!authData.user) throw new Error('Pendaftaran pengguna gagal.');
         userId = authData.user.id;
-      } else {
-        userId = formData.id;
       }
 
       let photoUrl = formData.avatar_url;
@@ -314,66 +314,37 @@ const UserManagement: React.FC = () => {
         photoUrl = getFileUrl('face-photos', fileName);
       }
 
-      const profileData: Partial<User> = {
+      const profileData = {
+        ...formData,
         id: userId,
-        name: formData.name,
-        full_name: formData.name,
-        email: formData.email,
-        phone: formData.phone,
-        location: formData.location,
-        title: formData.title,
-        bio: formData.bio || `${getRoleDisplayName(formData.role)} di sistem absensi`,
         avatar_url: photoUrl,
-        role: formData.role,
-        position_id: formData.position_id,
-        employee_id: formData.employee_id,
-        department: formData.department,
-        salary: formData.salary,
-        bank_id: formData.bank_id || null,
-        bank_account_number: formData.bank_account_number || null,
-        bank_account_name: formData.bank_account_name || formData.name,
         is_face_registered: formData.role === 'admin' ? true : !!photoUrl,
-        status: formData.status,
-        join_date: new Date().toISOString().split('T')[0],
-        contract_start_date: new Date().toISOString().split('T')[0],
-        contract_type: 'permanent',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
       };
 
-      const { error: profileError } = modalMode === 'add'
-        ? await supabase.from('profiles').insert([profileData])
-        : await supabase.from('profiles').update(profileData).eq('id', userId);
-
+      const { error: profileError } = await (modalMode === 'add'
+        ? supabase.from('profiles').insert([profileData])
+        : supabase.from('profiles').update(profileData).eq('id', userId));
       if (profileError) throw profileError;
 
       const salaryData = {
         user_id: userId,
         daily_salary: formData.salary / 22,
         overtime_rate: 1.5,
-        bonus: 0,
-        deduction: 0,
         effective_date: new Date().toISOString().split('T')[0],
         is_active: true,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
       };
 
-      const { error: salaryError } = modalMode === 'add'
-        ? await supabase.from('employee_salaries').insert([salaryData])
-        : await supabase.from('employee_salaries').update(salaryData).eq('user_id', userId).eq('is_active', true);
+      await (modalMode === 'add'
+        ? supabase.from('employee_salaries').insert([salaryData])
+        : supabase.from('employee_salaries').update(salaryData).eq('user_id', userId).eq('is_active', true));
 
-      if (salaryError && !salaryError.message.includes('0 rows')) throw salaryError;
-
-      Swal.fire({
-        icon: 'success',
-        title: 'Berhasil',
-        html: `<b>${formData.name}</b> (${getRoleDisplayName(formData.role)}) berhasil ${modalMode === 'add' ? 'ditambahkan' : 'diperbarui'}!`,
-      });
+      Swal.fire({ icon: 'success', title: 'Berhasil', text: `Pengguna ${formData.name} berhasil ${modalMode === 'add' ? 'dibuat' : 'diperbarui'}.` });
       resetForm();
-      await fetchUsers();
+      fetchUsers();
     } catch (err) {
-      Swal.fire({ icon: 'error', title: 'Gagal', text: err.message || `Terjadi kesalahan saat ${modalMode === 'add' ? 'membuat' : 'memperbarui'} user` });
+      Swal.fire({ icon: 'error', title: 'Gagal', text: err.message || 'Terjadi kesalahan.' });
     } finally {
       setIsSubmitting(false);
     }

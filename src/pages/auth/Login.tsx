@@ -150,33 +150,38 @@ const Login = () => {
           timerProgressBar: true
         });
 
-        navigate(profile?.role === 'admin' ? '/admin/dashboard' : '/dashboard');
+        navigate(profile?.role === 'admin' ? '/admin' : '/dashboard');
       }
     } catch (err) {
       console.error('Login error:', err);
       
-      const errorMessages = {
-        'Invalid login credentials': 'Email atau password salah',
-        'Email not confirmed': 'Email belum dikonfirmasi. Silakan cek email Anda.',
-        'Too many requests': 'Terlalu banyak percobaan login. Silakan coba lagi nanti.',
-        'Sistem belum dikonfigurasi': err.message,
-        'Akun Anda tidak aktif': err.message
-      };
-
-      const errorMessage = errorMessages[err.message] || 'Terjadi kesalahan saat login';
+      let errorMessage = 'Terjadi kesalahan saat login. Silakan coba lagi.';
+      if (err instanceof Error) {
+          switch (err.message) {
+              case 'Invalid login credentials':
+                  errorMessage = 'Email atau password yang Anda masukkan salah. Silakan periksa kembali.';
+                  break;
+              case 'Email not confirmed':
+                  errorMessage = 'Akun Anda belum diaktifkan. Silakan periksa email Anda untuk link aktivasi.';
+                  break;
+              case 'Too many requests':
+                  errorMessage = 'Terlalu banyak percobaan login. Silakan coba lagi dalam beberapa saat.';
+                  break;
+              case 'Network error':
+                  errorMessage = 'Gagal terhubung ke server. Periksa koneksi internet Anda.';
+                  break;
+              default:
+                  errorMessage = err.message;
+          }
+      }
 
       await Swal.fire({
         icon: 'error',
         title: 'Login Gagal',
-        html: `
-          <div class="text-left">
-            <p class="font-medium">${errorMessage}</p>
-            ${err.message.includes('credentials') ? (
-              '<p class="mt-2 text-sm text-gray-600">Pastikan email dan password yang Anda masukkan benar.</p>'
-            ) : ''}
-          </div>
-        `,
-        confirmButtonColor: '#1e40af'
+        text: errorMessage,
+        confirmButtonColor: '#1e40af',
+        timer: 5000,
+        timerProgressBar: true,
       });
 
       resetFormState();
@@ -212,25 +217,25 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 py-8 bg-gradient-to-br from-teal-50 to-emerald-100 dark:from-gray-800 dark:to-gray-900 animate-gradient">
+    <div className="min-h-screen flex items-center justify-center px-4 py-8 bg-gradient-to-br from-blue-50 to-indigo-100 animate-gradient">
       <div className="w-full max-w-md mx-auto">
         {/* Login Form */}
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-8 transform transition-all duration-300 hover:shadow-3xl">
+        <div className="bg-white rounded-2xl shadow-2xl p-8 transform transition-all duration-300 hover:shadow-3xl">
           <div className="mb-8 text-center">
             <div className="flex justify-center mb-4">
-              <div className="p-3 bg-teal-100 dark:bg-teal-800 rounded-full">
-                <LogIn className="h-8 w-8 text-teal-600 dark:text-teal-300" />
+              <div className="p-3 bg-blue-100 rounded-full">
+                <LogIn className="h-8 w-8 text-blue-600" />
               </div>
             </div>
-            <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100 font-poppins">Masuk ke Akun Anda</h2>
+            <h2 className="text-3xl font-bold text-gray-900 font-poppins">Masuk ke Akun Anda</h2>
           </div>
 
           {!isSupabaseConfigured() && (
-            <div className="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900 rounded-lg flex items-start space-x-3 animate-pulse">
-              <AlertCircle className="h-5 w-5 text-yellow-600 dark:text-yellow-400 mt-0.5" />
+            <div className="mb-6 p-4 bg-yellow-50 rounded-lg flex items-start space-x-3 animate-pulse">
+              <AlertCircle className="h-5 w-5 text-yellow-600 mt-0.5" />
               <div>
-                <p className="text-yellow-800 dark:text-yellow-200 font-medium">Sistem Belum Dikonfigurasi</p>
-                <p className="text-yellow-700 dark:text-yellow-300 text-sm mt-1">
+                <p className="text-yellow-800 font-medium">Sistem Belum Dikonfigurasi</p>
+                <p className="text-yellow-700 text-sm mt-1">
                   Database belum terhubung. Hubungi administrator.
                 </p>
               </div>
@@ -238,20 +243,20 @@ const Login = () => {
           )}
 
           {successMessage && (
-            <div className="mb-6 p-4 bg-green-50 dark:bg-green-900 rounded-lg flex items-start space-x-3 animate-slide-in">
-              <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400 mt-0.5" />
-              <p className="text-green-800 dark:text-green-200 font-medium">{successMessage}</p>
+            <div className="mb-6 p-4 bg-green-50 rounded-lg flex items-start space-x-3 animate-slide-in">
+              <CheckCircle className="h-5 w-5 text-green-600 mt-0.5" />
+              <p className="text-green-800 font-medium">{successMessage}</p>
             </div>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Email Field */}
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 font-poppins">
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2 font-poppins">
                 Alamat Email
               </label>
               <div className="relative group">
-                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400 group-focus-within:text-teal-500 transition-colors" />
+                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
                 <input
                   type="email"
                   id="email"
@@ -259,7 +264,7 @@ const Login = () => {
                   value={formData.email}
                   onChange={handleChange}
                   required
-                  className="w-full pl-10 pr-4 py-3 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-white dark:bg-gray-700 transition-all duration-200 hover:border-teal-300 dark:hover:border-teal-500 placeholder-gray-400 dark:placeholder-gray-500 font-poppins"
+                  className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white transition-all duration-200 hover:border-blue-300 placeholder-gray-400 font-poppins"
                   placeholder="Masukkan email Anda"
                   aria-label="Alamat Email"
                 />
@@ -268,11 +273,11 @@ const Login = () => {
 
             {/* Password Field */}
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 font-poppins">
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2 font-poppins">
                 Password
               </label>
               <div className="relative group">
-                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400 group-focus-within:text-teal-500 transition-colors" />
+                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
                 <input
                   type={showPassword ? "text" : "password"}
                   id="password"
@@ -280,13 +285,13 @@ const Login = () => {
                   value={formData.password}
                   onChange={handleChange}
                   required
-                  className="w-full pl-10 pr-12 py-3 border border-gray-200 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent bg-white dark:bg-gray-700 transition-all duration-200 hover:border-teal-300 dark:hover:border-teal-500 placeholder-gray-400 dark:placeholder-gray-500 font-poppins"
+                  className="w-full pl-10 pr-12 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white transition-all duration-200 hover:border-blue-300 placeholder-gray-400 font-poppins"
                   placeholder="Masukkan password Anda"
                   aria-label="Password"
                 />
                 <button
                   type="button"
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-teal-500 p-1 transition-colors"
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-blue-500 p-1 transition-colors"
                   onClick={() => setShowPassword(!showPassword)}
                   aria-label={showPassword ? "Sembunyikan password" : "Tampilkan password"}
                 >
@@ -300,8 +305,8 @@ const Login = () => {
             {/* ReCAPTCHA */}
             <div className="flex justify-center">
               <Suspense fallback={
-                <div className="h-20 w-full flex items-center justify-center bg-gray-50 dark:bg-gray-700 rounded-lg">
-                  <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-teal-500"></div>
+                <div className="h-20 w-full flex items-center justify-center bg-gray-50 rounded-lg">
+                  <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-blue-500"></div>
                 </div>
               }>
                 <ReCAPTCHA
@@ -322,7 +327,7 @@ const Login = () => {
             <button
               type="submit"
               disabled={isLoading || !isSupabaseConfigured()}
-              className={`w-full py-3 px-4 rounded-lg font-semibold text-white bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 transition-all duration-300 transform hover:scale-105 font-poppins
+              className={`w-full py-3 px-4 rounded-lg font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-300 transform hover:scale-105 font-poppins
                          ${isLoading ? 'opacity-70 cursor-wait' : ''}
                          ${!isSupabaseConfigured() ? 'opacity-70 cursor-not-allowed' : ''}`}
             >
