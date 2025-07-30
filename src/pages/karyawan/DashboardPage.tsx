@@ -135,7 +135,6 @@ const DashboardPage = () => {
   const [showCalendar, setShowCalendar] = useState(true);
   const [bankInfo, setBankInfo] = useState<any | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
-
   const isAdmin = useMemo(() => profile?.role === 'admin', [profile?.role]);
 
   const checkUser = useCallback(async () => {
@@ -182,7 +181,6 @@ const DashboardPage = () => {
     const timer = setInterval(() => {
       setCurrentTime(new Date());
     }, 1000);
-
     return () => clearInterval(timer);
   }, []);
 
@@ -314,12 +312,10 @@ const DashboardPage = () => {
         .eq('status', 'berhasil')
         .gte('timestamp', startOfThisMonth.toISOString())
         .lte('timestamp', endOfThisMonth.toISOString());
-
       if (error) throw error;
       const attendanceDays = new Set();
       const onTimeData = [];
       const lateData = [];
-
       monthlyData?.forEach(record => {
         const recordDate = new Date(record.timestamp).toDateString();
         if (record.type === 'masuk') {
@@ -331,22 +327,18 @@ const DashboardPage = () => {
           }
         }
       });
-
       const daysInMonth = eachDayOfInterval({
         start: startOfThisMonth,
         end: isToday(endOfThisMonth) ? new Date() : endOfThisMonth
       });
       const workDaysInMonth = daysInMonth.filter(day => !isWeekend(day)).length;
-
       const absentDays = workDaysInMonth - attendanceDays.size;
-
       const workDays = attendanceDays.size;
       let expectedSalary = salaryInfo ? salaryInfo.daily_salary * 22 : profile?.salary || 0;
       const currentMonthSalary = profile?.salary ? (profile.salary / 22 * workDays) : 0;
       const todayEarned = todayData
         .filter(r => r.type === 'masuk' && r.status === 'berhasil')
         .reduce((sum, r) => sum + (r.daily_salary_earned || 0), 0);
-
       setStats({
         thisMonth: workDays,
         onTime: onTimeData.length,
@@ -664,8 +656,8 @@ const DashboardPage = () => {
           </div>
         )}
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+        {/* Stats Cards - Fixed responsive grid */}
+        <div className="grid grid-cols-2 gap-2 sm:gap-3 mb-4">
           <StatCard icon={Calendar} title="Hadir" value={`${stats.thisMonth} hari`} color="blue" />
           <StatCard icon={CheckCircle} title="Tepat Waktu" value={`${stats.onTime} hari`} color="green" />
           <StatCard icon={AlertTriangle} title="Terlambat" value={`${stats.late} hari`} color="orange" />
@@ -761,7 +753,7 @@ const DashboardPage = () => {
                     </div>
                   )}
                   <div className="mt-2 sm:mt-3 p-2 bg-blue-50 rounded-lg shadow-sm">
-                    <div className="text-[0.65rem] sm:text-xs grid grid-cols-2 gap-2">
+                    <div className="text-[0.65rem] sm:text-xs grid grid-cols-2 gap-1 sm:gap-2">
                       <div className="flex items-center justify-between">
                         <span>Masuk:</span>
                         <span className={hasCheckedIn ? 'text-green-600' : 'text-gray-600'}>

@@ -341,3 +341,4 @@ const AttendanceManagement: React.FC = () => {
     </div>
   );
 };
+export default AttendanceManagement
