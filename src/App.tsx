@@ -8,8 +8,8 @@ import KaryawanLayout from './layouts/KaryawanLayout';
 import AdminLayout from './layouts/AdminLayout';
 
 // Pages
-import Login from './pages/Login';
-import Register from './pages/Register';
+import Login from './pages/auth/Login';
+import Register from './pages/auth/Register';
 
 // Karyawan Pages
 import DashboardPage from './pages/karyawan/DashboardPage';
