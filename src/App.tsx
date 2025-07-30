@@ -86,15 +86,30 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
       setLoading(false);
     };
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
-      if (!session) {
+
+      if (session?.user) {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+
+        if (error) {
+          console.error("Error fetching profile on auth state change:", error);
+          setProfile(null);
+        } else {
+          setProfile(data);
+        }
+      } else {
         setProfile(null);
       }
+      setLoading(false);
     });
 
-    setData();
+    // Initial load is handled by onAuthStateChange, so we can remove the explicit setData() call.
 
     return () => {
       subscription.unsubscribe();
@@ -143,17 +158,12 @@ function AppRoutes() {
     );
   }
 
-  const isAdmin = profile?.role === 'admin';
-  const isLoggedIn = !!session;
-
   return (
     <Routes>
-      {/* Public Routes */}
-      <Route path="/login" element={!isLoggedIn ? <Login /> : <Navigate to={isAdmin ? '/admin' : '/dashboard'} replace />} />
-      <Route path="/register" element={!isLoggedIn ? <Register /> : <Navigate to={isAdmin ? '/admin' : '/dashboard'} replace />} />
+      <Route path="/login" element={!session ? <Login /> : <Navigate to={profile?.role === 'admin' ? '/admin' : '/dashboard'} replace />} />
+      <Route path="/register" element={!session ? <Register /> : <Navigate to={profile?.role === 'admin' ? '/admin' : '/dashboard'} replace />} />
 
-      {/* Karyawan Routes */}
-      <Route element={<ProtectedRoute isAllowed={isLoggedIn && !isAdmin} redirectTo="/login" />}>
+      <Route element={<ProtectedRoute isAllowed={!!session && profile?.role === 'karyawan'} redirectTo="/login" />}>
         <Route element={<KaryawanLayout />}>
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/history" element={<AttendanceHistory />} />
@@ -161,8 +171,7 @@ function AppRoutes() {
         </Route>
       </Route>
 
-      {/* Admin Routes */}
-      <Route element={<ProtectedRoute isAllowed={isLoggedIn && isAdmin} redirectTo="/dashboard" />}>
+      <Route element={<ProtectedRoute isAllowed={!!session && profile?.role === 'admin'} redirectTo="/dashboard" />}>
         <Route element={<AdminLayout />}>
           <Route path="/admin" element={<AdminDashboardPage />} />
           <Route path="/admin/users" element={<UserManagement />} />
@@ -175,8 +184,7 @@ function AppRoutes() {
         </Route>
       </Route>
 
-      {/* Redirects and Catch-all */}
-      <Route path="/" element={<Navigate to={isLoggedIn ? (isAdmin ? '/admin' : '/dashboard') : '/login'} replace />} />
+      <Route path="/" element={<Navigate to={!session ? '/login' : profile?.role === 'admin' ? '/admin' : '/dashboard'} replace />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
