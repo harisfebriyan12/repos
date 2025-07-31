@@ -2,9 +2,9 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { UserPlus, Mail, Lock, User, Camera, AlertCircle, CheckCircle, Building2, Shield, Crown, Users } from 'lucide-react';
 import ReCAPTCHA from 'react-google-recaptcha';
-import { supabase, uploadFile, getFileUrl, isSupabaseConfigured } from '../utils/supabaseClient';
-import RecaptchaInfo from '../components/RecaptchaInfo';
-import CustomFaceCapture from '../components/CustomFaceCapture';
+import { supabase, uploadFile, getFileUrl, isSupabaseConfigured } from '../../utils/supabaseClient';
+import RecaptchaInfo from '../../components/RecaptchaInfo';
+import CustomFaceCapture from '../../components/CustomFaceCapture';
 
 const Register = () => {
   const navigate = useNavigate();
